@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Tic Tac Toe – API Tester</title>
+</head>
+<body>
+
+<h2>Tic‑Tac‑Toe API Tester</h2>
+
+<button onclick="createGame()">Create Game</button>
+<br/><br/>
+
+<input type="number" id="gameId" placeholder="Game ID"/>
+<button onclick="getGame()">Get Game</button>
+<br/><br/>
+
+<input type="number" id="moveIndex" placeholder="Cell Index (0‑8)"/>
+<button onclick="makeMove()">Make Move</button>
+
+<pre id="output"></pre>
+
+<script>
+    const output = document.getElementById("output");
+
+    function createGame() {
+        fetch("/api/games", {
+            method: "POST"
+        })
+        .then(res => res.text())
+        .then(data => output.textContent = data)
+        .catch(err => output.textContent = err);
+    }
+
+    function getGame() {
+        const gameId = document.getElementById("gameId").value;
+        fetch(`/api/games/${gameId}`)
+        .then(res => res.text())
+        .then(data => output.textContent = data)
+        .catch(err => output.textContent = err);
+    }
+
+    function makeMove() {
+        const gameId = document.getElementById("gameId").value;
+        const moveIndex = document.getElementById("moveIndex").value;
+
+        fetch(`/api/games/${gameId}/moves`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ cellIndex: moveIndex })
+        })
+        .then(res => res.text())
+        .then(data => output.textContent = data)
+        .catch(err => output.textContent = err);
+    }
+</script>
+
+</body>
+</html>
