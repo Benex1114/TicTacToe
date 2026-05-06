@@ -28,7 +28,16 @@ public class GameService {
     //Create Game
     public GameResponse createGame(GameMode gameMode) {
         
-        Player starter = lastStartingPlayer == null || lastStartingPlayer == Player.O ? Player.X : Player.O;
+        Player starter;
+
+        if (gameMode == GameMode.SINGLE_PLAYER) {
+            starter = Player.X;
+        } else {
+            starter = (lastStartingPlayer == null || lastStartingPlayer == Player.O)
+                    ? Player.X
+                    : Player.O;
+            lastStartingPlayer = starter;
+        }
 
         Game game = new Game();
         game.setBoardState("_,_,_,_,_,_,_,_,_");
