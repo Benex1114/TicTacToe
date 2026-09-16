@@ -3,6 +3,7 @@ package com.example.tictactoe.service;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 
@@ -40,6 +41,7 @@ public class GameService {
         }
 
         Game game = new Game();
+        game.setId(UUID.randomUUID().toString());
         game.setBoardState("_,_,_,_,_,_,_,_,_");
         game.setStartingPlayer(starter);
         game.setCurrentPlayer(starter);
@@ -64,7 +66,7 @@ public class GameService {
     }
 
     //Get Game by Id
-    public GameResponse getGameById(Long gameId) {
+    public GameResponse getGameById(String gameId) {
 
         Game game = gameRepository.findById(gameId)
                 .orElseThrow(() -> new GameNotFoundException(gameId));
@@ -117,7 +119,7 @@ public class GameService {
     }
 
     //Make Move
-    public GameResponse makeMove(Long gameId, int cellIndex) {
+    public GameResponse makeMove(String gameId, int cellIndex) {
 
     Game game = gameRepository.findById(gameId)
             .orElseThrow(() ->

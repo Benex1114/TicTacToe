@@ -34,7 +34,7 @@ public class GameController {
 
 
     @GetMapping("/{gameId}")
-    public ResponseEntity<GameResponse> getGame(@PathVariable Long gameId) {
+    public ResponseEntity<GameResponse> getGame(@PathVariable String gameId) {
 
         GameResponse response = gameService.getGameById(gameId);
         return ResponseEntity.ok(response);
@@ -43,7 +43,7 @@ public class GameController {
 
     @PostMapping("/{gameId}/moves")
     public ResponseEntity<GameResponse> makeMove(
-            @PathVariable Long gameId,
+            @PathVariable String gameId,
             @Valid @RequestBody MakeMoveRequest request
     ) {
         GameResponse response =

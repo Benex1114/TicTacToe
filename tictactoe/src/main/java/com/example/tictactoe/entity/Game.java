@@ -2,54 +2,41 @@ package com.example.tictactoe.entity;
 
 import java.time.LocalDateTime;
 
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.mapping.Document;
+
 import com.example.tictactoe.domain.GameStatus;
 import com.example.tictactoe.domain.Player;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
 
-@Entity
-@Table(name = "games")
+@Document(collection = "games")
 public class Game {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private String id;
 
-    @Column(name = "board_state", nullable = false)
     private String boardState;
-    
-    @Enumerated(EnumType.STRING)
-    @Column(name = "current_player")
+
     private Player currentPlayer;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false)
     private GameStatus status;
 
-    @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
-    @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "starting_player", nullable = false)
     private Player startingPlayer;
-    
-    @Enumerated(EnumType.STRING)
-    @Column(name = "game_mode", nullable = false)
+
     private GameMode gameMode;
 
     // Getters and setters
-    public Long getId() {
+
+    public String getId() {
         return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
     }
 
     public String getBoardState() {
