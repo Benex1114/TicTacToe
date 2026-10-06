@@ -167,6 +167,11 @@ class GameServiceTest {
         // Exhaustively try every possible sequence of X moves
         assertAiNeverLoses(List.of());
     }
+
+    @Test
+    void movingInUnknownGameThrowsGameNotGound() {
+        assertThrows(GameNotFoundException.class, () -> gameService.makeMove("does-not-exist", 0));
+    }
  
     // ---------- Helpers ----------
  

@@ -122,8 +122,7 @@ public class GameService {
     public GameResponse makeMove(String gameId, int cellIndex) {
 
     Game game = gameRepository.findById(gameId)
-            .orElseThrow(() ->
-                    new RuntimeException("Game not found with id: " + gameId));
+            .orElseThrow(() -> new GameNotFoundException(gameId));
 
     if (!game.getStatus().equals(GameStatus.IN_PROGRESS)) {
         throw new InvalidMoveException("Game already finished");
