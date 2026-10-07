@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import com.example.tictactoe.domain.GameStatus;
 import com.example.tictactoe.domain.Player;
 import com.example.tictactoe.dto.GameResponse;
+import com.example.tictactoe.entity.Difficulty;
 import com.example.tictactoe.entity.Game;
 import com.example.tictactoe.entity.GameMode;
 import com.example.tictactoe.exception.GameNotFoundException;
@@ -28,6 +29,10 @@ public class GameService {
 
     //Create Game
     public GameResponse createGame(GameMode gameMode) {
+        return createGame(gameMode, null);
+    }
+
+    public GameResponse createGame(GameMode gameMode, Difficulty difficulty) {
         
         Player starter;
 
@@ -47,6 +52,10 @@ public class GameService {
         game.setCurrentPlayer(starter);
         game.setStatus(GameStatus.IN_PROGRESS);
         game.setGameMode(gameMode != null ? gameMode : GameMode.MULTI_PLAYER);
+        // Difficulty only applies to single player; default keeps the unbeatable AI
+        game.setDifficulty(game.getGameMode() == GameMode.SINGLE_PLAYER
+                ? (difficulty != null ? difficulty : Difficulty.IMPOSSIBLE)
+                : null);
         if(game.getGameMode()==GameMode.MULTI_PLAYER) {lastStartingPlayer = starter;}
         game.setCreatedAt(LocalDateTime.now());
         game.setUpdatedAt(LocalDateTime.now());
@@ -60,7 +69,8 @@ public class GameService {
                 savedGame.getId(),
                 board,
                 savedGame.getCurrentPlayer(),
-                savedGame.getStatus()
+                savedGame.getStatus(),
+                savedGame.getDifficulty()
         );
         
     }
@@ -78,7 +88,8 @@ public class GameService {
                 game.getId(),
                 board,
                 game.getCurrentPlayer(),
-                game.getStatus()
+                game.getStatus(),
+                game.getDifficulty()
         );
     }
 
@@ -171,7 +182,8 @@ public class GameService {
             savedGame.getId(),
             Arrays.asList(savedGame.getBoardState().split(",")),
             savedGame.getCurrentPlayer(),
-            savedGame.getStatus()
+            savedGame.getStatus(),
+            savedGame.getDifficulty()
     );
     }
 

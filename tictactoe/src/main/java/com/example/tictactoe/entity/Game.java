@@ -29,6 +29,8 @@ public class Game {
 
     private GameMode gameMode;
 
+    private Difficulty difficulty;
+
     // Getters and setters
 
     public String getId() {
@@ -93,5 +95,13 @@ public class Game {
 
     public void setGameMode(GameMode gameMode) {
         this.gameMode = gameMode;
+    }
+
+    public Difficulty getDifficulty() {
+        return difficulty;
+    }
+
+    public void setDifficulty(Difficulty difficulty) {
+        this.difficulty = difficulty;
     }
 }

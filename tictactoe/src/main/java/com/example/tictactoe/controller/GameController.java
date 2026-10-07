@@ -29,7 +29,7 @@ public class GameController {
 
     @PostMapping
     public ResponseEntity<GameResponse> createGame(@RequestBody CreateGameRequest request) {
-        return ResponseEntity.ok(gameService.createGame(request.getGameMode()));
+        return ResponseEntity.ok(gameService.createGame(request.getGameMode(), request.getDifficulty()));
     }
 
 

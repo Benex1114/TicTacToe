@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import com.example.tictactoe.domain.GameStatus;
 import com.example.tictactoe.domain.Player;
 import com.example.tictactoe.dto.GameResponse;
+import com.example.tictactoe.entity.Difficulty;
 import com.example.tictactoe.entity.GameMode;
 import com.example.tictactoe.exception.GameNotFoundException;
 import com.example.tictactoe.exception.InvalidMoveException;
@@ -62,6 +63,38 @@ class GameServiceTest {
         assertThrows(GameNotFoundException.class, () -> gameService.getGameById("does-not-exist"));
     }
  
+    // ---------- Difficulty ----------
+
+    @Test
+    void singlePlayerStoresChosenDifficulty() {
+        GameResponse game = gameService.createGame(GameMode.SINGLE_PLAYER, Difficulty.EASY);
+
+        assertEquals(Difficulty.EASY, game.getDifficulty());
+        assertEquals(Difficulty.EASY, gameService.getGameById(game.getGameId()).getDifficulty());
+    }
+
+    @Test
+    void singlePlayerDefaultsToImpossible() {
+        GameResponse game = gameService.createGame(GameMode.SINGLE_PLAYER, null);
+
+        assertEquals(Difficulty.IMPOSSIBLE, game.getDifficulty());
+    }
+
+    @Test
+    void multiPlayerIgnoresDifficulty() {
+        GameResponse game = gameService.createGame(GameMode.MULTI_PLAYER, Difficulty.HARD);
+
+        assertNull(game.getDifficulty());
+    }
+
+    @Test
+    void difficultyProbabilitiesMatchTheSpec() {
+        assertEquals(0.2, Difficulty.EASY.getBestMoveProbability());
+        assertEquals(0.5, Difficulty.MEDIUM.getBestMoveProbability());
+        assertEquals(0.8, Difficulty.HARD.getBestMoveProbability());
+        assertEquals(1.0, Difficulty.IMPOSSIBLE.getBestMoveProbability());
+    }
+
     // ---------- Move validation ----------
  
     @Test
