@@ -2,11 +2,13 @@ package com.example.tictactoe.service;
  
 import java.util.Collections;
 import java.util.List;
+import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
  
@@ -206,6 +208,80 @@ class GameServiceTest {
         assertThrows(GameNotFoundException.class, () -> gameService.makeMove("does-not-exist", 0));
     }
  
+    // ---------- Difficulty-based AI ----------
+
+    /** A Random that always returns the same values, so the AI's choice is predictable. */
+    private static Random fixedRandom(double nextDouble) {
+        return new Random() {
+            @Override
+            public double nextDouble() {
+                return nextDouble;
+            }
+
+            @Override
+            public int nextInt(int bound) {
+                return bound - 1; // always the last empty cell
+            }
+        };
+    }
+
+    @Test
+    void aiPlaysBestMoveWhenRollIsUnderProbability() {
+        GameService service = new GameService(new GameRepository(), fixedRandom(0.0));
+        String id = service.createGame(GameMode.SINGLE_PLAYER, Difficulty.EASY).getGameId();
+
+        GameResponse board = service.makeMove(id, 4);
+
+        // Against a centre opening, minimax answers with the first corner
+        assertEquals("O", board.getBoard().get(0));
+    }
+
+    @Test
+    void aiPlaysRandomMoveWhenRollIsOverProbability() {
+        GameService service = new GameService(new GameRepository(), fixedRandom(0.99));
+        String id = service.createGame(GameMode.SINGLE_PLAYER, Difficulty.EASY).getGameId();
+
+        GameResponse board = service.makeMove(id, 4);
+
+        // Random path picks the last empty cell (8), not the minimax corner (0)
+        assertEquals("O", board.getBoard().get(8));
+        assertEquals("_", board.getBoard().get(0));
+    }
+
+    @Test
+    void impossibleAlwaysPlaysBestMoveEvenWithHighRoll() {
+        GameService service = new GameService(new GameRepository(), fixedRandom(0.99));
+        String id = service.createGame(GameMode.SINGLE_PLAYER, Difficulty.IMPOSSIBLE).getGameId();
+
+        GameResponse board = service.makeMove(id, 4);
+
+        assertEquals("O", board.getBoard().get(0));
+    }
+
+    @Test
+    void easyPlaysBestMoveLessOftenThanHard() {
+        double easy = bestReplyRate(Difficulty.EASY);
+        double hard = bestReplyRate(Difficulty.HARD);
+
+        // Expected about 0.30 for EASY and 0.83 for HARD (random moves can also hit the best cell)
+        assertTrue(easy > 0.2 && easy < 0.45, "EASY rate was " + easy);
+        assertTrue(hard > 0.75 && hard < 0.9, "HARD rate was " + hard);
+    }
+
+    /** Plays 1000 games opening in the centre and returns how often the AI found the best reply. */
+    private double bestReplyRate(Difficulty difficulty) {
+        GameService service = new GameService(new GameRepository(), new Random(42));
+        int best = 0;
+        int games = 1000;
+        for (int i = 0; i < games; i++) {
+            String id = service.createGame(GameMode.SINGLE_PLAYER, difficulty).getGameId();
+            if (service.makeMove(id, 4).getBoard().get(0).equals("O")) {
+                best++;
+            }
+        }
+        return (double) best / games;
+    }
+
     // ---------- Helpers ----------
  
     private GameResponse play(String gameId, int... cells) {

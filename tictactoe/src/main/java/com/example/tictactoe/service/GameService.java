@@ -2,9 +2,12 @@ package com.example.tictactoe.service;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.example.tictactoe.domain.GameStatus;
@@ -21,10 +24,18 @@ import com.example.tictactoe.repository.GameRepository;
 public class GameService {
 
     private final GameRepository gameRepository;
+    private final Random random;
     private Player lastStartingPlayer = null;
 
+    @Autowired
     public GameService(GameRepository gameRepository) {
+        this(gameRepository, new Random());
+    }
+
+    // Lets tests pass a seeded or fixed Random so AI behaviour is repeatable
+    GameService(GameRepository gameRepository, Random random) {
         this.gameRepository = gameRepository;
+        this.random = random;
     }
 
     //Create Game
@@ -190,8 +201,8 @@ public class GameService {
     private void makeAiMove(Game game) {
     String[] board = game.getBoardState().split(",");
 
-    int bestMove = findBestMove(board);
-    board[bestMove] = Player.O.name();
+    int move = chooseAiMove(board, game.getDifficulty());
+    board[move] = Player.O.name();
 
     if (hasPlayerWon(board, Player.O)) {
         game.setStatus(GameStatus.O_WON);
@@ -204,6 +215,26 @@ public class GameService {
     }
 
     game.setBoardState(String.join(",", board));
+    }
+
+    // Plays the minimax move with the difficulty's probability, otherwise a random empty cell
+    private int chooseAiMove(String[] board, Difficulty difficulty) {
+        double probability = (difficulty != null ? difficulty : Difficulty.IMPOSSIBLE).getBestMoveProbability();
+
+        if (probability >= 1.0 || random.nextDouble() < probability) {
+            return findBestMove(board);
+        }
+        return randomEmptyCell(board);
+    }
+
+    private int randomEmptyCell(String[] board) {
+        List<Integer> empty = new ArrayList<>();
+        for (int i = 0; i < board.length; i++) {
+            if (board[i].equals("_")) {
+                empty.add(i);
+            }
+        }
+        return empty.get(random.nextInt(empty.size()));
     }
 
         private int findBestMove(String[] board) {
