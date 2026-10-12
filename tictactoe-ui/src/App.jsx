@@ -1,6 +1,13 @@
 import { useState } from "react";
 const API_BASE = "http://localhost:8080/api/games";
 
+const DIFFICULTIES = [
+  { value: "EASY", label: "Easy" },
+  { value: "MEDIUM", label: "Medium" },
+  { value: "HARD", label: "Hard" },
+  { value: "IMPOSSIBLE", label: "Impossible" },
+];
+
 const WIN_PATTERNS = [
   [0, 1, 2],
   [3, 4, 5],
@@ -19,10 +26,18 @@ export default function App() {
   const [game, setGame] = useState(null);
   const [error, setError] = useState(null);
   const [gameMode, setGameMode] = useState("MULTI_PLAYER");
+  const [difficulty, setDifficulty] = useState("MEDIUM");
+
+  const isSinglePlayer = gameMode === "SINGLE_PLAYER";
+  const nameX = players.X || "Player X";
+  const nameO = players.O || (isSinglePlayer ? "Computer" : "Player O");
 
   const createGame = async () => {
-    const res = await fetch(API_BASE, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ gameMode }), });
+    // Difficulty is only sent for single player; the backend ignores it otherwise
+    const body = isSinglePlayer ? { gameMode, difficulty } : { gameMode };
+    const res = await fetch(API_BASE, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), });
     const data = await res.json();
+    setError(null);
     setGame(data);
   };
 
@@ -75,8 +90,8 @@ export default function App() {
       {/* Scoreboard */}
       <div style={{ marginBottom: "10px", textAlign: "center" }}>
         <strong>Scores</strong>
-        <div>{players.X || "Player X"}: {scores.X}</div>
-        <div>{players.O || "Player O"}: {scores.O}</div>
+        <div>{nameX}: {scores.X}</div>
+        <div>{nameO}: {scores.O}</div>
         <div>Draws: {scores.DRAW}</div>
       </div>
           
@@ -102,16 +117,40 @@ export default function App() {
         </label>
       </div>
 
+      {/* Difficulty selector (single player only) */}
+      {isSinglePlayer && (
+        <div className="difficulty-group" role="radiogroup" aria-label="Difficulty">
+          {DIFFICULTIES.map((d) => (
+            <button
+              key={d.value}
+              type="button"
+              role="radio"
+              aria-checked={difficulty === d.value}
+              className={`difficulty-btn${difficulty === d.value ? " active" : ""}`}
+              onClick={() => setDifficulty(d.value)}
+            >
+              {d.label}
+            </button>
+          ))}
+        </div>
+      )}
+
 
       {/* New Game Button */}
       <button className="new-game-btn" onClick={createGame}>New Game</button>
 
       {game && (
         <>
+          {game.difficulty && (
+            <div className="game-info">
+              vs Computer · {DIFFICULTIES.find((d) => d.value === game.difficulty)?.label}
+            </div>
+          )}
+
           <h3>
-            {game.status === "IN_PROGRESS" && `Turn: ${game.currentPlayer === "X" ? players.X || "Player X" : players.O || "Player O"}`}
-            {game.status === "X_WON" && `Winner: ${players.X || "Player X"}`}
-            {game.status === "O_WON" && `Winner: ${players.O || "Player O"}`}
+            {game.status === "IN_PROGRESS" && `Turn: ${game.currentPlayer === "X" ? nameX : nameO}`}
+            {game.status === "X_WON" && `Winner: ${nameX}`}
+            {game.status === "O_WON" && `Winner: ${nameO}`}
             {game.status === "DRAW" && "It's a Draw!"}
           </h3>
 

@@ -101,3 +101,37 @@ h2, h3 {
 .new-game-btn:hover {
   transform: scale(1.06);
 }
+/* Difficulty selector */
+.difficulty-group {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 10px;
+  background: rgba(36, 56, 100, 0.45);
+}
+
+.difficulty-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: #cbd5e1;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.difficulty-btn:hover {
+  color: #ffffff;
+}
+
+.difficulty-btn.active {
+  background: #38bdf8;
+  color: #020617;
+}
+
+.game-info {
+  font-size: 14px;
+  color: #94a3b8;
+}
