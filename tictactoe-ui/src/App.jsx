@@ -8,6 +8,11 @@ const DIFFICULTIES = [
   { value: "IMPOSSIBLE", label: "Impossible" },
 ];
 
+const MODES = [
+  { value: "SINGLE_PLAYER", label: "Single player" },
+  { value: "MULTI_PLAYER", label: "Two players" },
+];
+
 const WIN_PATTERNS = [
   [0, 1, 2],
   [3, 4, 5],
@@ -19,26 +24,61 @@ const WIN_PATTERNS = [
   [2, 4, 6],
 ];
 
+const EMPTY_BOARD = Array(9).fill("_");
+
+// Reusable segmented control used for both the mode and difficulty pickers
+function Segmented({ label, options, value, onChange }) {
+  return (
+    <div className="segmented" role="radiogroup" aria-label={label}>
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          role="radio"
+          aria-checked={value === o.value}
+          className={`segment${value === o.value ? " active" : ""}`}
+          onClick={() => onChange(o.value)}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 //App functions
 export default function App() {
-  const [players, setPlayers] = useState({X: "", O: "", });
-  const [scores, setScores] = useState({X: 0, O: 0, DRAW: 0,});
+  const [scores, setScores] = useState({ X: 0, O: 0, DRAW: 0 });
   const [game, setGame] = useState(null);
   const [error, setError] = useState(null);
   const [gameMode, setGameMode] = useState("MULTI_PLAYER");
   const [difficulty, setDifficulty] = useState("MEDIUM");
 
   const isSinglePlayer = gameMode === "SINGLE_PLAYER";
-  const nameX = players.X || "Player X";
-  const nameO = players.O || (isSinglePlayer ? "Computer" : "Player O");
+  // Names follow the game being played (it has a difficulty only in single player)
+  const vsComputer = game ? Boolean(game.difficulty) : isSinglePlayer;
+  const nameX = vsComputer ? "You" : "Player X";
+  const nameO = vsComputer ? "Computer" : "Player O";
+  const difficultyLabel = DIFFICULTIES.find((d) => d.value === (game?.difficulty ?? difficulty))?.label;
+
+  const changeMode = (mode) => {
+    if (mode === gameMode) return;
+    setGameMode(mode);
+    setScores({ X: 0, O: 0, DRAW: 0 }); // scores from different modes shouldn't mix
+    setGame(null);
+  };
 
   const createGame = async () => {
     // Difficulty is only sent for single player; the backend ignores it otherwise
     const body = isSinglePlayer ? { gameMode, difficulty } : { gameMode };
-    const res = await fetch(API_BASE, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), });
-    const data = await res.json();
-    setError(null);
-    setGame(data);
+    try {
+      const res = await fetch(API_BASE, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const data = await res.json();
+      setError(null);
+      setGame(data);
+    } catch {
+      setError("Can't reach the game server. Make sure the backend is running on port 8080.");
+    }
   };
 
   const makeMove = async (index) => {
@@ -51,7 +91,11 @@ export default function App() {
     });
 
     const data = await res.json();
-    res.ok ? setGame(data) : setError(data.message);
+    if (!res.ok) {
+      setError(data.message);
+      return;
+    }
+    setGame(data);
     if (data.status !== "IN_PROGRESS") {
       updateScores(data.status);
     }
@@ -80,173 +124,112 @@ export default function App() {
       setScores((s) => ({ ...s, DRAW: s.DRAW + 1 }));
   };
 
-// Top Container
+  // One line under the board that always says what's happening
+  const getStatus = () => {
+    if (!game) return { text: "Pick a mode, then start a new game.", tone: "idle" };
+    switch (game.status) {
+      case "X_WON":
+        return { text: vsComputer ? "You win!" : "Player X wins!", tone: "x" };
+      case "O_WON":
+        return { text: vsComputer ? "Computer wins." : "Player O wins!", tone: "o" };
+      case "DRAW":
+        return { text: "It's a draw.", tone: "draw" };
+      default:
+        if (vsComputer) return { text: "Your turn", tone: "x" };
+        return { text: `Player ${game.currentPlayer}'s turn`, tone: game.currentPlayer.toLowerCase() };
+    }
+  };
+
+  const status = getStatus();
+  const winner = game?.status === "X_WON" ? "X" : game?.status === "O_WON" ? "O" : null;
+  const board = game ? game.board : EMPTY_BOARD;
+
+  const sideClass = (mark) =>
+    [
+      "player",
+      `player-${mark.toLowerCase()}`,
+      game?.currentPlayer === mark ? "is-turn" : "",
+      winner === mark ? "is-winner" : "",
+    ].join(" ");
+
   return (
-<div style={pageStyle}>
-    <div style={appContainer}>
-      {/* Title */}
-      <h2 className= "title-pop" style={{fontSize: 50}}>Tic‑Tac‑Toe</h2>
+    <main className="page">
+      <div className="app">
+        <h1 className="title title-pop">Tic‑Tac‑Toe</h1>
 
-      {/* Scoreboard */}
-      <div style={{ marginBottom: "10px", textAlign: "center" }}>
-        <strong>Scores</strong>
-        <div>{nameX}: {scores.X}</div>
-        <div>{nameO}: {scores.O}</div>
-        <div>Draws: {scores.DRAW}</div>
-      </div>
-          
-      <div style={{ display: "flex", gap: "10px" }}>
-        <label>
-          <input
-            type="radio"
-            value="SINGLE_PLAYER"
-            checked={gameMode === "SINGLE_PLAYER"}
-            onChange={() => setGameMode("SINGLE_PLAYER")}
-          />
-          Single Player
-        </label>
-
-        <label>
-          <input
-            type="radio"
-            value="MULTI_PLAYER"
-            checked={gameMode === "MULTI_PLAYER"}
-            onChange={() => setGameMode("MULTI_PLAYER")}
-          />
-          Two Player
-        </label>
-      </div>
-
-      {/* Difficulty selector (single player only) */}
-      {isSinglePlayer && (
-        <div className="difficulty-group" role="radiogroup" aria-label="Difficulty">
-          {DIFFICULTIES.map((d) => (
-            <button
-              key={d.value}
-              type="button"
-              role="radio"
-              aria-checked={difficulty === d.value}
-              className={`difficulty-btn${difficulty === d.value ? " active" : ""}`}
-              onClick={() => setDifficulty(d.value)}
-            >
-              {d.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-
-      {/* New Game Button */}
-      <button className="new-game-btn" onClick={createGame}>New Game</button>
-
-      {game && (
-        <>
-          {game.difficulty && (
-            <div className="game-info">
-              vs Computer · {DIFFICULTIES.find((d) => d.value === game.difficulty)?.label}
-            </div>
-          )}
-
-          <h3>
-            {game.status === "IN_PROGRESS" && `Turn: ${game.currentPlayer === "X" ? nameX : nameO}`}
-            {game.status === "X_WON" && `Winner: ${nameX}`}
-            {game.status === "O_WON" && `Winner: ${nameO}`}
-            {game.status === "DRAW" && "It's a Draw!"}
-          </h3>
-
-          {/*Grid Layout*/}
-          <div style={{ position: "relative", width: 300, height: 300 }}>
-            <div key={game.gameId} className="board-container">
-            <svg width="300" height="300">
-              {/* Vertical lines */}
-              <line x1="100" y1="0" x2="100" y2="300" stroke="#243864" strokeWidth="7" />
-              <line x1="200" y1="0" x2="200" y2="300" stroke="#243864" strokeWidth="7" />
-
-              {/* Horizontal lines */}
-              <line x1="0" y1="100" x2="300" y2="100" stroke="#243864" strokeWidth="7" />
-              <line x1="0" y1="200" x2="300" y2="200" stroke="#243864" strokeWidth="7" />
-            </svg>
-            </div>
-
-            {/* Click & render layer */}
-            <div style={overlayGrid}>
-              {game.board.map((cell, index) => (
-                <button
-                  key={index}
-                  onClick={() => makeMove(index)}
-                  disabled={cell !== "_" || !game.currentPlayer}
-                  style={{...overlayCell,
-                  backgroundColor: winningCells.includes(index)
-                    ? "rgba(34, 197, 94, 0.2)"
-                    : "transparent",
-                  boxShadow: winningCells.includes(index)
-                    ? "0 0 25px rgba(34, 197, 94, 0.6)"
-                    : "none",
-                  animation: winningCells.includes(index)
-                    ? "pulse 1.2s infinite alternate"
-                    : "none",
-                }}  
-                onMouseEnter={(e) => {
-                    if (cell === "_") e.target.style.transform = "scale(1.05)";
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.transform = "scale(1)";
-                }}
-                >
-                  {cell !== "_" && (
-                    <span className="cell-mark" style={{color: cell === "X" ? "#38bdf8" : "#f472b6"}}>
-                      {cell}
-                    </span>
-                  )}
-                </button>
-                
-              ))}
-            </div>
+        {/* Player bar: scores and whose turn it is */}
+        <section className="players" aria-label="Scores">
+          <div className={sideClass("X")}>
+            <span className="player-mark" aria-hidden="true">X</span>
+            <span className="player-name">{nameX}</span>
+            <span className="player-score">{scores.X}</span>
           </div>
 
-        </>
-      )}
+          <div className="draws">
+            <span className="draws-score">{scores.DRAW}</span>
+            <span className="draws-label">draws</span>
+          </div>
 
-      {error && <p style={{ color: "red" }}>{error}</p>}
-    </div>
- </div>
+          <div className={sideClass("O")}>
+            <span className="player-score">{scores.O}</span>
+            <span className="player-name">
+              {nameO}
+              {vsComputer && <small className="player-sub">{difficultyLabel}</small>}
+            </span>
+            <span className="player-mark" aria-hidden="true">O</span>
+          </div>
+        </section>
+
+        {/* Mode and difficulty */}
+        <div className="controls">
+          <Segmented label="Game mode" options={MODES} value={gameMode} onChange={changeMode} />
+          {isSinglePlayer && (
+            <Segmented label="Difficulty" options={DIFFICULTIES} value={difficulty} onChange={setDifficulty} />
+          )}
+        </div>
+
+        {/*Grid Layout*/}
+        <div className={`board${game ? "" : " is-idle"}`}>
+          <svg key={game?.gameId ?? "idle"} className="board-lines" viewBox="0 0 300 300" aria-hidden="true">
+            {/* Vertical lines */}
+            <line x1="100" y1="8" x2="100" y2="292" />
+            <line x1="200" y1="8" x2="200" y2="292" />
+
+            {/* Horizontal lines */}
+            <line x1="8" y1="100" x2="292" y2="100" />
+            <line x1="8" y1="200" x2="292" y2="200" />
+          </svg>
+
+          {/* Click & render layer */}
+          <div className="cells">
+            {board.map((cell, index) => (
+              <button
+                key={index}
+                type="button"
+                className={`cell${winningCells.includes(index) ? " is-winning" : ""}`}
+                onClick={() => makeMove(index)}
+                disabled={!game || cell !== "_" || !game.currentPlayer}
+                aria-label={cell === "_" ? `Empty cell ${index + 1}` : `${cell} in cell ${index + 1}`}
+              >
+                {cell !== "_" && (
+                  <span className={`cell-mark mark-${cell.toLowerCase()}`}>{cell}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <p className={`status status-${status.tone}`} role="status" aria-live="polite">
+          {status.text}
+        </p>
+
+        {/* New Game Button */}
+        <button type="button" className="new-game-btn" onClick={createGame}>
+          {game && game.status !== "IN_PROGRESS" ? "Play again" : "New game"}
+        </button>
+
+        {error && <p className="error" role="alert">{error}</p>}
+      </div>
+    </main>
   );
 }
-
-const overlayGrid = {
-  position: "absolute",
-  top: 0,
-  left: 0,
-  width: "300px",
-  height: "300px",
-  display: "grid",
-  gridTemplateColumns: "repeat(3, 1fr)",
-  gridTemplateRows: "repeat(3, 1fr)",
-};
-
-const overlayCell = {
-  background: "transparent",
-  border: "none",
-  fontSize: "46px",
-  fontWeight: "900",
-  color: "#ffffff",
-  cursor: "pointer",
-  transition: "transform 0.15s ease, background-color 0.3s ease",
-};
-
-const pageStyle = {
-  minHeight: "100vh",
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-  background: "radial-gradient(circle at top, #1e293b, #020617)",
-  color: "#e5e7eb",
-  fontFamily: "Inter, system-ui, sans-serif",
-};
-
-const appContainer = {
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  gap: "12px",
-};
