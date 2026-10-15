@@ -1,5 +1,7 @@
 import { useState } from "react";
-const API_BASE = "http://localhost:8080/api/games";
+// Backend address: set VITE_API_URL when deploying, defaults to the local backend
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
+const API_BASE = `${API_URL.replace(/\/$/, "")}/api/games`;
 
 const DIFFICULTIES = [
   { value: "EASY", label: "Easy" },
@@ -53,6 +55,7 @@ export default function App() {
   const [error, setError] = useState(null);
   const [gameMode, setGameMode] = useState("MULTI_PLAYER");
   const [difficulty, setDifficulty] = useState("MEDIUM");
+  const [loading, setLoading] = useState(false);
 
   const isSinglePlayer = gameMode === "SINGLE_PLAYER";
   // Names follow the game being played (it has a difficulty only in single player)
@@ -71,13 +74,16 @@ export default function App() {
   const createGame = async () => {
     // Difficulty is only sent for single player; the backend ignores it otherwise
     const body = isSinglePlayer ? { gameMode, difficulty } : { gameMode };
+    setLoading(true);
     try {
       const res = await fetch(API_BASE, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = await res.json();
       setError(null);
       setGame(data);
     } catch {
-      setError("Can't reach the game server. Make sure the backend is running on port 8080.");
+      setError("Can't reach the game server. Check that the backend is running, then try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -126,6 +132,8 @@ export default function App() {
 
   // One line under the board that always says what's happening
   const getStatus = () => {
+    // The free server sleeps when unused, so the first request can take up to a minute
+    if (loading) return { text: "Connecting to the game server… the first game can take up to a minute.", tone: "idle" };
     if (!game) return { text: "Pick a mode, then start a new game.", tone: "idle" };
     switch (game.status) {
       case "X_WON":
@@ -224,8 +232,8 @@ export default function App() {
         </p>
 
         {/* New Game Button */}
-        <button type="button" className="new-game-btn" onClick={createGame}>
-          {game && game.status !== "IN_PROGRESS" ? "Play again" : "New game"}
+        <button type="button" className="new-game-btn" onClick={createGame} disabled={loading}>
+          {loading ? "Starting…" : game && game.status !== "IN_PROGRESS" ? "Play again" : "New game"}
         </button>
 
         {error && <p className="error" role="alert">{error}</p>}
