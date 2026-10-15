@@ -40,12 +40,6 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
-        <!-- MongoDB -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-mongodb</artifactId>
-        </dependency>
-
         <!-- Unit + Integration Testing -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

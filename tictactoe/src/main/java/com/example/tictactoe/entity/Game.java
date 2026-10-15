@@ -2,17 +2,11 @@ package com.example.tictactoe.entity;
 
 import java.time.LocalDateTime;
 
-import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.mapping.Document;
-
 import com.example.tictactoe.domain.GameStatus;
 import com.example.tictactoe.domain.Player;
 
-
-@Document(collection = "games")
 public class Game {
 
-    @Id
     private String id;
 
     private String boardState;
