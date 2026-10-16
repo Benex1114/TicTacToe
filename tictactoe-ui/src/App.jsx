@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 // Backend address: set VITE_API_URL when deploying, defaults to the local backend
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
 const API_BASE = `${API_URL.replace(/\/$/, "")}/api/games`;
@@ -56,6 +56,27 @@ export default function App() {
   const [gameMode, setGameMode] = useState("MULTI_PLAYER");
   const [difficulty, setDifficulty] = useState("MEDIUM");
   const [loading, setLoading] = useState(false);
+  const [pendingMove, setPendingMove] = useState(false);
+  const [serverReady, setServerReady] = useState(false);
+
+  // Wake the backend as soon as the page opens. On Render's free plan it sleeps
+  // when unused and takes about a minute to start, so this hides most of the wait.
+  useEffect(() => {
+    let cancelled = false;
+    const ping = async () => {
+      try {
+        const res = await fetch(`${API_URL.replace(/\/$/, "")}/api/health`);
+        if (res.ok && !cancelled) setServerReady(true);
+        else if (!cancelled) setTimeout(ping, 5000);
+      } catch {
+        if (!cancelled) setTimeout(ping, 5000);
+      }
+    };
+    ping();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const isSinglePlayer = gameMode === "SINGLE_PLAYER";
   // Names follow the game being played (it has a difficulty only in single player)
@@ -79,6 +100,7 @@ export default function App() {
       const res = await fetch(API_BASE, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = await res.json();
       setError(null);
+      setServerReady(true);
       setGame(data);
     } catch {
       setError("Can't reach the game server. Check that the backend is running, then try again.");
@@ -88,22 +110,39 @@ export default function App() {
   };
 
   const makeMove = async (index) => {
-    if (!game || game.board[index] !== "_" || !game.currentPlayer) return;
+    // Ignore taps while a move is on its way, so fast double-taps can't send two moves
+    if (!game || pendingMove || game.board[index] !== "_" || !game.currentPlayer) return;
 
-    const res = await fetch(`${API_BASE}/${game.gameId}/moves`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cellIndex: index }),
-    });
+    // Show the player's mark straight away instead of waiting for the server
+    const previous = game;
+    const optimisticBoard = [...game.board];
+    optimisticBoard[index] = game.currentPlayer;
+    setGame({ ...game, board: optimisticBoard });
+    setPendingMove(true);
 
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.message);
-      return;
-    }
-    setGame(data);
-    if (data.status !== "IN_PROGRESS") {
-      updateScores(data.status);
+    try {
+      const res = await fetch(`${API_BASE}/${game.gameId}/moves`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cellIndex: index }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setGame(previous); // undo the optimistic mark
+        setError(data.message);
+        return;
+      }
+      setError(null);
+      setGame(data);
+      if (data.status !== "IN_PROGRESS") {
+        updateScores(data.status);
+      }
+    } catch {
+      setGame(previous);
+      setError("Lost connection to the game server. Try that move again.");
+    } finally {
+      setPendingMove(false);
     }
   };
 
@@ -134,6 +173,7 @@ export default function App() {
   const getStatus = () => {
     // The free server sleeps when unused, so the first request can take up to a minute
     if (loading) return { text: "Connecting to the game server… the first game can take up to a minute.", tone: "idle" };
+    if (!game && !serverReady) return { text: "Waking up the game server… this can take up to a minute.", tone: "idle" };
     if (!game) return { text: "Pick a mode, then start a new game.", tone: "idle" };
     switch (game.status) {
       case "X_WON":
@@ -143,7 +183,7 @@ export default function App() {
       case "DRAW":
         return { text: "It's a draw.", tone: "draw" };
       default:
-        if (vsComputer) return { text: "Your turn", tone: "x" };
+        if (vsComputer) return pendingMove ? { text: "Computer is thinking…", tone: "o" } : { text: "Your turn", tone: "x" };
         return { text: `Player ${game.currentPlayer}'s turn`, tone: game.currentPlayer.toLowerCase() };
     }
   };
@@ -216,7 +256,7 @@ export default function App() {
                 type="button"
                 className={`cell${winningCells.includes(index) ? " is-winning" : ""}`}
                 onClick={() => makeMove(index)}
-                disabled={!game || cell !== "_" || !game.currentPlayer}
+                disabled={!game || pendingMove || cell !== "_" || !game.currentPlayer}
                 aria-label={cell === "_" ? `Empty cell ${index + 1}` : `${cell} in cell ${index + 1}`}
               >
                 {cell !== "_" && (

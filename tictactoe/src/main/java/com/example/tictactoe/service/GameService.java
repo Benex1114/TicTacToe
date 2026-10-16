@@ -23,6 +23,18 @@ import com.example.tictactoe.repository.GameRepository;
 @Service
 public class GameService {
 
+    // Created once instead of on every win check (minimax checks wins thousands of times per move)
+    private static final int[][] WIN_PATTERNS = {
+            {0, 1, 2},
+            {3, 4, 5},
+            {6, 7, 8},
+            {0, 3, 6},
+            {1, 4, 7},
+            {2, 5, 8},
+            {0, 4, 8},
+            {2, 4, 6}
+    };
+
     private final GameRepository gameRepository;
     private final Random random;
     private Player lastStartingPlayer = null;
@@ -109,18 +121,8 @@ public class GameService {
 
     String p = player.name();    
 
-    int[][] winPatterns = {
-            {0, 1, 2},
-            {3, 4, 5},
-            {6, 7, 8},
-            {0, 3, 6},
-            {1, 4, 7},
-            {2, 5, 8},
-            {0, 4, 8},
-            {2, 4, 6}
-    };
 
-    for (int[] pattern : winPatterns) {
+    for (int[] pattern : WIN_PATTERNS) {
         if (board[pattern[0]].equals(p) &&
             board[pattern[1]].equals(p) &&
             board[pattern[2]].equals(p)) {
@@ -237,14 +239,15 @@ public class GameService {
         return empty.get(random.nextInt(empty.size()));
     }
 
-        private int findBestMove(String[] board) {
+    private int findBestMove(String[] board) {
         int bestScore = Integer.MIN_VALUE;
         int move = -1;
 
         for (int i = 0; i < 9; i++) {
             if (board[i].equals("_")) {
                 board[i] = Player.O.name();
-                int score = minimax(board, false);
+                // Alpha starts at the best score found so far, so worse moves are cut off early
+                int score = minimax(board, false, bestScore, Integer.MAX_VALUE);
                 board[i] = "_";
 
                 if (score > bestScore) {
@@ -256,33 +259,43 @@ public class GameService {
         return move;
     }
 
-    private int minimax(String[] board, boolean isMaximizing) {
+    /**
+     * Minimax with alpha-beta pruning.
+     * alpha = best score O is already guaranteed, beta = best score X is already guaranteed.
+     * When alpha >= beta the rest of this branch can't change the result, so it is skipped.
+     * Same moves as plain minimax, far fewer positions searched.
+     */
+    private int minimax(String[] board, boolean isMaximizing, int alpha, int beta) {
 
-    if (hasPlayerWon(board, Player.O)) return 10;
-    if (hasPlayerWon(board, Player.X)) return -10;
-    if (isDraw(board)) return 0;
+        if (hasPlayerWon(board, Player.O)) return 10;
+        if (hasPlayerWon(board, Player.X)) return -10;
+        if (isDraw(board)) return 0;
 
-    if (isMaximizing) {
-        int best = Integer.MIN_VALUE;
-        for (int i = 0; i < 9; i++) {
-            if (board[i].equals("_")) {
-                board[i] = Player.O.name();
-                best = Math.max(best, minimax(board, false));
-                board[i] = "_";
+        if (isMaximizing) {
+            int best = Integer.MIN_VALUE;
+            for (int i = 0; i < 9; i++) {
+                if (board[i].equals("_")) {
+                    board[i] = Player.O.name();
+                    best = Math.max(best, minimax(board, false, alpha, beta));
+                    board[i] = "_";
+                    alpha = Math.max(alpha, best);
+                    if (alpha >= beta) break;
+                }
             }
-        }
-        return best;
-    } else {
-        int best = Integer.MAX_VALUE;
-        for (int i = 0; i < 9; i++) {
-            if (board[i].equals("_")) {
-                board[i] = Player.X.name();
-                best = Math.min(best, minimax(board, true));
-                board[i] = "_";
+            return best;
+        } else {
+            int best = Integer.MAX_VALUE;
+            for (int i = 0; i < 9; i++) {
+                if (board[i].equals("_")) {
+                    board[i] = Player.X.name();
+                    best = Math.min(best, minimax(board, true, alpha, beta));
+                    board[i] = "_";
+                    beta = Math.min(beta, best);
+                    if (alpha >= beta) break;
+                }
             }
+            return best;
         }
-        return best;
     }
-}
 
 }
