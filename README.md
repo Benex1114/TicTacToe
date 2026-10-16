@@ -1,5 +1,7 @@
 # Tic-Tac-Toe: Spring Boot + React
 
+**[▶ Play it live](https://tictactoe-43rh.onrender.com)** (the first visit can take up to a minute while the free server wakes up)
+
 A full-stack Tic-Tac-Toe game. The **Spring Boot REST API** holds all the game rules: move validation, win and draw detection, and a **minimax AI** opponent with four difficulty levels. The **React (Vite) frontend** draws the board, shows whose turn it is and keeps score.
 
 <p align="center">
@@ -137,7 +139,6 @@ cd tictactoe
 
 ## Planned improvements
 
-- Deploy to Render with a live demo link
 - Online two-player mode over WebSockets, so two people can play from their own devices
 - Save games in a database instead of in memory
 
