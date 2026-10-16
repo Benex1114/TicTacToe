@@ -15,5 +15,8 @@ WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
 
 EXPOSE 8080
-# Keep memory use within Render's free-plan limit
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "app.jar"]
+# JVM settings for a small, slow free-plan server:
+#   MaxRAMPercentage=75   keep memory within the 512 MB limit
+#   TieredStopAtLevel=1   compile code quickly instead of optimising it, so startup is faster
+#   UseSerialGC           the simplest garbage collector; least CPU and memory overhead on one core
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-XX:TieredStopAtLevel=1", "-XX:+UseSerialGC", "-jar", "app.jar"]
