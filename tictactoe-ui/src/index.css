@@ -38,29 +38,51 @@ button:focus-visible {
 /* ---------- Layout ---------- */
 .page {
   min-height: 100vh;
+  min-height: 100dvh; /* full visible height on phones, ignoring the browser bar */
   display: flex;
   justify-content: center;
-  align-items: flex-start;
-  padding: 48px 16px;
+  align-items: center; /* centre vertically as well as horizontally */
+  padding: 24px 16px;
   background: radial-gradient(circle at top, var(--bg-top), var(--bg-bottom));
 }
 
 .app {
   width: 100%;
-  max-width: 420px;
+  max-width: 560px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
+  gap: 28px;
 }
 
-/* Title Pop */
+/* Title: shown on the menu, slides up and folds away during a game */
+.title-wrap {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0);
+  transition: grid-template-rows 0.45s ease, opacity 0.3s ease, transform 0.45s ease, margin 0.45s ease;
+}
+
+.title-wrap.is-hidden {
+  grid-template-rows: 0fr; /* collapses the space the title took up */
+  opacity: 0;
+  transform: translateY(-24px);
+  margin-bottom: -28px; /* cancels the gap below it so the board sits centred */
+}
+
+.title-wrap > .title {
+  overflow: hidden;
+  min-height: 0;
+}
+
 .title {
   margin: 0;
-  font-size: clamp(40px, 11vw, 52px);
+  font-size: clamp(48px, 13vw, 72px);
   font-weight: 800;
   letter-spacing: -1px;
   color: var(--title);
+  text-align: center;
 }
 
 .title-pop {
@@ -81,6 +103,88 @@ button:focus-visible {
   }
 }
 
+/* ---------- Menu ---------- */
+.menu {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+}
+
+.mode-cards {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.mode-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 24px 18px;
+  border-radius: var(--radius-md);
+  border: 2px solid transparent;
+  background: var(--surface);
+  text-align: center;
+  align-items: center;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.mode-card:hover {
+  border-color: var(--line);
+}
+
+.mode-card.active {
+  border-color: var(--x);
+}
+
+.mode-card-title {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.mode-card-desc {
+  font-size: 15px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.menu-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.menu-label {
+  font-size: 16px;
+  color: var(--muted);
+}
+
+.end-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.text-btn {
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 17px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.text-btn:hover {
+  color: var(--text);
+}
+
 /* ---------- Player bar ---------- */
 .players {
   width: 100%;
@@ -93,8 +197,8 @@ button:focus-visible {
 .player {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 12px;
+  padding: 14px 16px;
   border-radius: var(--radius-md);
   border: 2px solid transparent;
   background: var(--surface);
@@ -107,7 +211,7 @@ button:focus-visible {
 }
 
 .player-mark {
-  font-size: 28px;
+  font-size: 36px;
   font-weight: 800;
   line-height: 1;
 }
@@ -118,20 +222,20 @@ button:focus-visible {
 .player-name {
   display: flex;
   flex-direction: column;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   line-height: 1.2;
 }
 
 .player-sub {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 400;
   color: var(--muted);
 }
 
 .player-score {
   margin-left: auto;
-  font-size: 22px;
+  font-size: 28px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
@@ -158,23 +262,16 @@ button:focus-visible {
 }
 
 .draws-score {
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
 .draws-label {
-  font-size: 12px;
+  font-size: 13px;
 }
 
-/* ---------- Segmented controls (mode + difficulty) ---------- */
-.controls {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-}
-
+/* ---------- Segmented control (difficulty) ---------- */
 .segmented {
   display: flex;
   flex-wrap: wrap;
@@ -186,12 +283,12 @@ button:focus-visible {
 }
 
 .segment {
-  padding: 6px 14px;
+  padding: 9px 18px;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
   color: #cbd5e1;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
   transition: background-color 0.2s ease, color 0.2s ease;
@@ -209,14 +306,12 @@ button:focus-visible {
 /* ---------- Board ---------- */
 .board {
   position: relative;
-  width: min(300px, 82vw);
+  /* As big as fits: up to 440px, but never wider than the phone or taller than the screen allows */
+  width: min(440px, 88vw, 58vh);
   aspect-ratio: 1;
   transition: opacity 0.3s ease;
 }
 
-.board.is-idle {
-  opacity: 0.35;
-}
 
 .board-lines {
   position: absolute;
@@ -259,7 +354,7 @@ button:focus-visible {
   border: none;
   border-radius: var(--radius-md);
   background: transparent;
-  font-size: clamp(36px, 11vw, 48px);
+  font-size: clamp(48px, 15vw, 84px);
   font-weight: 800;
   cursor: pointer;
   transition: background-color 0.2s ease;
@@ -317,21 +412,21 @@ button:focus-visible {
 .status {
   margin: 0;
   min-height: 1.5em;
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 600;
   text-align: center;
 }
 
-.status-idle { color: var(--muted); font-size: 15px; font-weight: 400; }
+.status-idle { color: var(--muted); font-size: 16px; font-weight: 400; }
 .status-x { color: var(--x); }
 .status-o { color: var(--o); }
 .status-draw { color: var(--text); }
 
 /* New Game button */
 .new-game-btn {
-  font-size: 18px;
-  padding: 10px 28px;
-  border-radius: 10px;
+  font-size: 20px;
+  padding: 14px 44px;
+  border-radius: 12px;
   border: none;
   background: linear-gradient(135deg, var(--x), var(--win));
   color: var(--bg-bottom);
@@ -362,6 +457,14 @@ button:focus-visible {
     animation: none !important;
     transition: none !important;
   }
+}
+
+@media (max-width: 480px) {
+  .player { padding: 10px 12px; gap: 8px; }
+  .player-mark { font-size: 28px; }
+  .player-name { font-size: 14px; }
+  .player-score { font-size: 22px; }
+  .segment { padding: 8px 12px; font-size: 15px; }
 }
 
 @media (max-width: 380px) {

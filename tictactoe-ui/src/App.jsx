@@ -11,8 +11,8 @@ const DIFFICULTIES = [
 ];
 
 const MODES = [
-  { value: "SINGLE_PLAYER", label: "Single player" },
-  { value: "MULTI_PLAYER", label: "Two players" },
+  { value: "SINGLE_PLAYER", label: "Single player", description: "Play against the computer" },
+  { value: "MULTI_PLAYER", label: "Two players", description: "Take turns on one screen" },
 ];
 
 const WIN_PATTERNS = [
@@ -58,6 +58,8 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [pendingMove, setPendingMove] = useState(false);
   const [serverReady, setServerReady] = useState(false);
+  // "menu" = pick mode and difficulty, "game" = playing. Mode can only change on the menu.
+  const [screen, setScreen] = useState("menu");
 
   // Wake the backend as soon as the page opens. On Render's free plan it sleeps
   // when unused and takes about a minute to start, so this hides most of the wait.
@@ -85,11 +87,17 @@ export default function App() {
   const nameO = vsComputer ? "Computer" : "Player O";
   const difficultyLabel = DIFFICULTIES.find((d) => d.value === (game?.difficulty ?? difficulty))?.label;
 
-  const changeMode = (mode) => {
-    if (mode === gameMode) return;
-    setGameMode(mode);
-    setScores({ X: 0, O: 0, DRAW: 0 }); // scores from different modes shouldn't mix
+  // Start a fresh session from the menu: new scores, then the first game
+  const startFromMenu = async () => {
+    setScores({ X: 0, O: 0, DRAW: 0 });
+    const started = await createGame();
+    if (started) setScreen("game");
+  };
+
+  const backToMenu = () => {
     setGame(null);
+    setError(null);
+    setScreen("menu");
   };
 
   const createGame = async () => {
@@ -102,8 +110,10 @@ export default function App() {
       setError(null);
       setServerReady(true);
       setGame(data);
+      return true;
     } catch {
       setError("Can't reach the game server. Check that the backend is running, then try again.");
+      return false;
     } finally {
       setLoading(false);
     }
@@ -174,7 +184,7 @@ export default function App() {
     // The free server sleeps when unused, so the first request can take up to a minute
     if (loading) return { text: "Connecting to the game server… the first game can take up to a minute.", tone: "idle" };
     if (!game && !serverReady) return { text: "Waking up the game server… this can take up to a minute.", tone: "idle" };
-    if (!game) return { text: "Pick a mode, then start a new game.", tone: "idle" };
+    if (!game) return { text: "Server is ready.", tone: "idle" };
     switch (game.status) {
       case "X_WON":
         return { text: vsComputer ? "You win!" : "Player X wins!", tone: "x" };
@@ -200,81 +210,128 @@ export default function App() {
       winner === mark ? "is-winner" : "",
     ].join(" ");
 
+  const gameOver = game && game.status !== "IN_PROGRESS";
+
   return (
     <main className="page">
       <div className="app">
-        <h1 className="title title-pop">Tic‑Tac‑Toe</h1>
-
-        {/* Player bar: scores and whose turn it is */}
-        <section className="players" aria-label="Scores">
-          <div className={sideClass("X")}>
-            <span className="player-mark" aria-hidden="true">X</span>
-            <span className="player-name">{nameX}</span>
-            <span className="player-score">{scores.X}</span>
-          </div>
-
-          <div className="draws">
-            <span className="draws-score">{scores.DRAW}</span>
-            <span className="draws-label">draws</span>
-          </div>
-
-          <div className={sideClass("O")}>
-            <span className="player-score">{scores.O}</span>
-            <span className="player-name">
-              {nameO}
-              {vsComputer && <small className="player-sub">{difficultyLabel}</small>}
-            </span>
-            <span className="player-mark" aria-hidden="true">O</span>
-          </div>
-        </section>
-
-        {/* Mode and difficulty */}
-        <div className="controls">
-          <Segmented label="Game mode" options={MODES} value={gameMode} onChange={changeMode} />
-          {isSinglePlayer && (
-            <Segmented label="Difficulty" options={DIFFICULTIES} value={difficulty} onChange={setDifficulty} />
-          )}
+        {/* The title folds away during a game so the board gets the space */}
+        <div className={`title-wrap${screen === "game" ? " is-hidden" : ""}`} aria-hidden={screen === "game"}>
+          <h1 className="title title-pop">Tic‑Tac‑Toe</h1>
         </div>
 
-        {/*Grid Layout*/}
-        <div className={`board${game ? "" : " is-idle"}`}>
-          <svg key={game?.gameId ?? "idle"} className="board-lines" viewBox="0 0 300 300" aria-hidden="true">
-            {/* Vertical lines */}
-            <line x1="100" y1="8" x2="100" y2="292" />
-            <line x1="200" y1="8" x2="200" y2="292" />
+        {screen === "menu" ? (
+          /* ---------- Menu: choose how to play ---------- */
+          <section className="menu" aria-label="Game setup">
+            <div className="mode-cards" role="radiogroup" aria-label="Game mode">
+              {MODES.map((m) => (
+                <button
+                  key={m.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={gameMode === m.value}
+                  className={`mode-card${gameMode === m.value ? " active" : ""}`}
+                  onClick={() => setGameMode(m.value)}
+                >
+                  <span className="mode-card-title">{m.label}</span>
+                  <span className="mode-card-desc">{m.description}</span>
+                </button>
+              ))}
+            </div>
 
-            {/* Horizontal lines */}
-            <line x1="8" y1="100" x2="292" y2="100" />
-            <line x1="8" y1="200" x2="292" y2="200" />
-          </svg>
+            {isSinglePlayer && (
+              <div className="menu-row">
+                <span className="menu-label">Difficulty</span>
+                <Segmented label="Difficulty" options={DIFFICULTIES} value={difficulty} onChange={setDifficulty} />
+              </div>
+            )}
 
-          {/* Click & render layer */}
-          <div className="cells">
-            {board.map((cell, index) => (
-              <button
-                key={index}
-                type="button"
-                className={`cell${winningCells.includes(index) ? " is-winning" : ""}`}
-                onClick={() => makeMove(index)}
-                disabled={!game || pendingMove || cell !== "_" || !game.currentPlayer}
-                aria-label={cell === "_" ? `Empty cell ${index + 1}` : `${cell} in cell ${index + 1}`}
-              >
-                {cell !== "_" && (
-                  <span className={`cell-mark mark-${cell.toLowerCase()}`}>{cell}</span>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
+            <button type="button" className="new-game-btn" onClick={startFromMenu} disabled={loading}>
+              {loading ? "Starting…" : "Start game"}
+            </button>
 
-        <p className={`status status-${status.tone}`} role="status" aria-live="polite">
-          {status.text}
-        </p>
+            <p className="status status-idle" role="status" aria-live="polite">
+              {loading
+                ? "Connecting to the game server… the first game can take up to a minute."
+                : serverReady
+                  ? "\u00a0"
+                  : "Waking up the game server… this can take up to a minute."}
+            </p>
+          </section>
+        ) : (
+          /* ---------- Game: board only, no mode switching ---------- */
+          <>
+            {/* Player bar: scores and whose turn it is */}
+            <section className="players" aria-label="Scores">
+              <div className={sideClass("X")}>
+                <span className="player-mark" aria-hidden="true">X</span>
+                <span className="player-name">{nameX}</span>
+                <span className="player-score">{scores.X}</span>
+              </div>
 
-        {/* New Game Button */}
-        <button type="button" className="new-game-btn" onClick={createGame} disabled={loading}>
-          {loading ? "Starting…" : game && game.status !== "IN_PROGRESS" ? "Play again" : "New game"}
-        </button>
+              <div className="draws">
+                <span className="draws-score">{scores.DRAW}</span>
+                <span className="draws-label">draws</span>
+              </div>
+
+              <div className={sideClass("O")}>
+                <span className="player-score">{scores.O}</span>
+                <span className="player-name">
+                  {nameO}
+                  {vsComputer && <small className="player-sub">{difficultyLabel}</small>}
+                </span>
+                <span className="player-mark" aria-hidden="true">O</span>
+              </div>
+            </section>
+
+            {/*Grid Layout*/}
+            <div className="board">
+              <svg key={game?.gameId ?? "idle"} className="board-lines" viewBox="0 0 300 300" aria-hidden="true">
+                {/* Vertical lines */}
+                <line x1="100" y1="8" x2="100" y2="292" />
+                <line x1="200" y1="8" x2="200" y2="292" />
+
+                {/* Horizontal lines */}
+                <line x1="8" y1="100" x2="292" y2="100" />
+                <line x1="8" y1="200" x2="292" y2="200" />
+              </svg>
+
+              {/* Click & render layer */}
+              <div className="cells">
+                {board.map((cell, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    className={`cell${winningCells.includes(index) ? " is-winning" : ""}`}
+                    onClick={() => makeMove(index)}
+                    disabled={!game || pendingMove || cell !== "_" || !game.currentPlayer}
+                    aria-label={cell === "_" ? `Empty cell ${index + 1}` : `${cell} in cell ${index + 1}`}
+                  >
+                    {cell !== "_" && (
+                      <span className={`cell-mark mark-${cell.toLowerCase()}`}>{cell}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <p className={`status status-${status.tone}`} role="status" aria-live="polite">
+              {status.text}
+            </p>
+
+            {/* Shown only when the game ends, so the mode can't change mid-game */}
+            {gameOver && (
+              <div className="end-actions">
+                <button type="button" className="new-game-btn" onClick={createGame} disabled={loading}>
+                  {loading ? "Starting…" : "Play again"}
+                </button>
+                <button type="button" className="text-btn" onClick={backToMenu}>
+                  Back to menu
+                </button>
+              </div>
+            )}
+          </>
+        )}
 
         {error && <p className="error" role="alert">{error}</p>}
       </div>
