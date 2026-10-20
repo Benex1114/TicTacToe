@@ -28,6 +28,29 @@ const WIN_PATTERNS = [
 
 const EMPTY_BOARD = Array(9).fill("_");
 
+// Minimum time before the computer's reply appears, so your move and its move don't land at once
+const AI_REPLY_DELAY_MS = 350;
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// X and O drawn as SVG strokes so they can animate as if drawn by hand.
+// pathLength="1" lets the CSS animate every stroke from 0 to 1, whatever its real length.
+function Mark({ player, ghost = false }) {
+  const className = `mark mark-${player.toLowerCase()}${ghost ? " mark-ghost" : ""}`;
+  if (player === "X") {
+    return (
+      <svg className={className} viewBox="0 0 100 100" aria-hidden="true">
+        <line className="mark-stroke" x1="24" y1="24" x2="76" y2="76" pathLength="1" />
+        <line className="mark-stroke mark-stroke-2" x1="76" y1="24" x2="24" y2="76" pathLength="1" />
+      </svg>
+    );
+  }
+  return (
+    <svg className={className} viewBox="0 0 100 100" aria-hidden="true">
+      <circle className="mark-stroke" cx="50" cy="50" r="28" pathLength="1" transform="rotate(-90 50 50)" />
+    </svg>
+  );
+}
+
 // Reusable segmented control used for both the mode and difficulty pickers
 function Segmented({ label, options, value, onChange }) {
   return (
@@ -129,6 +152,7 @@ export default function App() {
     optimisticBoard[index] = game.currentPlayer;
     setGame({ ...game, board: optimisticBoard });
     setPendingMove(true);
+    const startedAt = Date.now();
 
     try {
       const res = await fetch(`${API_BASE}/${game.gameId}/moves`, {
@@ -138,6 +162,11 @@ export default function App() {
       });
 
       const data = await res.json();
+      // Against the computer, hold its reply briefly so your X finishes drawing first
+      const aiReplied = vsComputer && data.board?.filter((c) => c === "O").length > game.board.filter((c) => c === "O").length;
+      if (res.ok && aiReplied) {
+        await wait(Math.max(0, AI_REPLY_DELAY_MS - (Date.now() - startedAt)));
+      }
       if (!res.ok) {
         setGame(previous); // undo the optimistic mark
         setError(data.message);
@@ -264,7 +293,7 @@ export default function App() {
             {/* Player bar: scores and whose turn it is */}
             <section className="players" aria-label="Scores">
               <div className={sideClass("X")}>
-                <span className="player-mark" aria-hidden="true">X</span>
+                <span className="player-mark" aria-hidden="true"><Mark player="X" /></span>
                 <span className="player-name">{nameX}</span>
                 <span className="player-score">{scores.X}</span>
               </div>
@@ -280,7 +309,7 @@ export default function App() {
                   {nameO}
                   {vsComputer && <small className="player-sub">{difficultyLabel}</small>}
                 </span>
-                <span className="player-mark" aria-hidden="true">O</span>
+                <span className="player-mark" aria-hidden="true"><Mark player="O" /></span>
               </div>
             </section>
 
@@ -307,29 +336,32 @@ export default function App() {
                     disabled={!game || pendingMove || cell !== "_" || !game.currentPlayer}
                     aria-label={cell === "_" ? `Empty cell ${index + 1}` : `${cell} in cell ${index + 1}`}
                   >
-                    {cell !== "_" && (
-                      <span className={`cell-mark mark-${cell.toLowerCase()}`}>{cell}</span>
+                    {cell !== "_" ? (
+                      <Mark player={cell} />
+                    ) : (
+                      // Faint preview of whose mark would go here (desktop hover only)
+                      game?.currentPlayer && !pendingMove && <Mark player={game.currentPlayer} ghost />
                     )}
                   </button>
                 ))}
               </div>
             </div>
 
-            <p className={`status status-${status.tone}`} role="status" aria-live="polite">
+            <p className={`status status-${status.tone}${gameOver ? " status-result" : ""}`} role="status" aria-live="polite">
               {status.text}
             </p>
 
-            {/* Shown only when the game ends, so the mode can't change mid-game */}
-            {gameOver && (
-              <div className="end-actions">
-                <button type="button" className="new-game-btn" onClick={createGame} disabled={loading}>
-                  {loading ? "Starting…" : "Play again"}
-                </button>
-                <button type="button" className="text-btn" onClick={backToMenu}>
-                  Back to menu
-                </button>
-              </div>
-            )}
+            {/* Always takes up its space so the board doesn't jump; only visible when the game ends */}
+            <div className={`end-actions${gameOver ? " is-visible" : ""}`} aria-hidden={!gameOver}>
+              {/* Restart: same mode and difficulty, score kept */}
+              <button type="button" className="new-game-btn" onClick={createGame} disabled={loading || !gameOver}>
+                {loading ? "Starting…" : "Restart"}
+              </button>
+              {/* Quit: back to the menu, score resets on the next start */}
+              <button type="button" className="secondary-btn" onClick={backToMenu} disabled={!gameOver}>
+                Quit
+              </button>
+            </div>
           </>
         )}
 

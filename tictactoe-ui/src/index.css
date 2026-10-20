@@ -164,25 +164,43 @@ button:focus-visible {
   color: var(--muted);
 }
 
+/* Restart / Quit row under the result */
 .end-actions {
   display: flex;
-  flex-direction: column;
-  align-items: center;
+  justify-content: center;
   gap: 12px;
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.25s ease, transform 0.25s ease, visibility 0s linear 0.25s;
 }
 
-.text-btn {
-  padding: 8px 12px;
-  border: none;
+.end-actions.is-visible {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(0);
+  /* short delay so the last mark finishes drawing before the buttons appear */
+  transition: opacity 0.3s ease 0.35s, transform 0.3s ease 0.35s, visibility 0s;
+}
+
+.end-actions > button {
+  min-width: 140px;
+}
+
+.secondary-btn {
+  font-size: 20px;
+  padding: 12px 36px;
+  border-radius: 12px;
+  border: 2px solid var(--line);
   background: transparent;
-  color: var(--muted);
-  font-size: 17px;
-  font-weight: 600;
+  color: var(--text);
+  font-weight: 700;
   cursor: pointer;
+  transition: border-color 0.2s ease;
 }
 
-.text-btn:hover {
-  color: var(--text);
+.secondary-btn:hover:not(:disabled) {
+  border-color: var(--muted);
 }
 
 /* ---------- Player bar ---------- */
@@ -211,9 +229,17 @@ button:focus-visible {
 }
 
 .player-mark {
-  font-size: 36px;
-  font-weight: 800;
-  line-height: 1;
+  display: flex;
+  width: 34px;
+  height: 34px;
+}
+
+/* Same drawn marks as the board, without the drawing animation */
+.player-mark .mark,
+.player-mark .mark-stroke {
+  width: 100%;
+  height: 100%;
+  animation: none;
 }
 
 .player-x .player-mark { color: var(--x); }
@@ -354,10 +380,13 @@ button:focus-visible {
   border: none;
   border-radius: var(--radius-md);
   background: transparent;
-  font-size: clamp(48px, 15vw, 84px);
-  font-weight: 800;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+/* Press feedback: the cell dips slightly under your finger */
+.cell:not(:disabled):active {
+  transform: scale(0.93);
 }
 
 .cell:not(:disabled):hover {
@@ -384,40 +413,77 @@ button:focus-visible {
   }
 }
 
-/* Cell Mark */
-.cell-mark {
-  display: inline-block;
-  line-height: 1;
-  animation: popIn 0.25s ease-out;
+/* ---------- Marks (SVG X and O) ---------- */
+.mark {
+  width: 70%;
+  height: 70%;
+  overflow: visible;
+  animation: markPop 0.32s cubic-bezier(.34,1.56,.64,1) both;
 }
 
 .mark-x { color: var(--x); }
 .mark-o { color: var(--o); }
 
-@keyframes popIn {
-  0% {
-    transform: scale(0);
-    opacity: 0;
-  }
-  80% {
-    transform: scale(1.25);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(1);
+.mark-stroke {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 13;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  animation: draw 0.2s ease-out both;
+}
+
+/* Second line of the X starts as the first one finishes */
+.mark-stroke-2 {
+  animation-delay: 0.13s;
+}
+
+.mark-o .mark-stroke {
+  animation-duration: 0.32s;
+}
+
+@keyframes draw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes markPop {
+  from { transform: scale(0.7); }
+  to { transform: scale(1); }
+}
+
+/* Hover preview: a faint mark shows where you're about to play (mouse only, not touch) */
+.mark-ghost,
+.mark-ghost .mark-stroke {
+  animation: none;
+}
+
+.mark-ghost {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+@media (hover: hover) {
+  .cell:not(:disabled):hover .mark-ghost {
+    opacity: 0.22;
   }
 }
 
 /* ---------- Status + actions ---------- */
 .status {
   margin: 0;
-  min-height: 1.5em;
+  /* Fixed height that fits the big result text, so the board never shifts when the game ends */
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 24px;
   font-weight: 600;
   text-align: center;
 }
 
 .status-idle { color: var(--muted); font-size: 16px; font-weight: 400; }
+.status-result { font-size: clamp(28px, 7vw, 36px); font-weight: 800; }
 .status-x { color: var(--x); }
 .status-o { color: var(--o); }
 .status-draw { color: var(--text); }
@@ -461,7 +527,7 @@ button:focus-visible {
 
 @media (max-width: 480px) {
   .player { padding: 10px 12px; gap: 8px; }
-  .player-mark { font-size: 28px; }
+  .player-mark { width: 26px; height: 26px; }
   .player-name { font-size: 14px; }
   .player-score { font-size: 22px; }
   .segment { padding: 8px 12px; font-size: 15px; }
@@ -469,6 +535,6 @@ button:focus-visible {
 
 @media (max-width: 380px) {
   .player { padding: 8px; gap: 6px; }
-  .player-mark { font-size: 22px; }
+  .player-mark { width: 22px; height: 22px; }
   .player-name { font-size: 13px; }
 }
