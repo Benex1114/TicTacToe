@@ -397,20 +397,34 @@ button:focus-visible {
   cursor: default;
 }
 
-.cell.is-winning {
-  background: rgba(34, 197, 94, 0.18);
-  box-shadow: 0 0 20px rgba(34, 197, 94, 0.6);
-  /* Pulse a few times and stop: an endless box-shadow animation is heavy on phones */
-  animation: pulse 0.6s ease-in-out 4 alternate;
+/* ---------- Win: slash through the line, other marks fade back ---------- */
+.board.has-winner .cell:not(.is-winning) .mark {
+  opacity: 0.3;
+  transition: opacity 0.4s ease 0.3s;
 }
 
-@keyframes pulse {
-  from {
-    box-shadow: 0 0 10px rgba(34, 197, 94, 0.4);
-  }
-  to {
-    box-shadow: 0 0 30px rgba(34, 197, 94, 0.9);
-  }
+.win-slash {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none; /* clicks pass through to the board */
+}
+
+.win-slash line {
+  stroke-width: 11;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  /* waits for the last mark to finish drawing, then sweeps across */
+  animation: draw 0.4s cubic-bezier(.65,0,.35,1) 0.3s both;
+}
+
+.slash-x { color: var(--x); filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.7)); }
+.slash-o { color: var(--o); filter: drop-shadow(0 0 8px rgba(244, 114, 182, 0.7)); }
+
+.win-slash line {
+  stroke: currentColor;
 }
 
 /* ---------- Marks (SVG X and O) ---------- */

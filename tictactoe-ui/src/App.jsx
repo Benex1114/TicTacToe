@@ -51,6 +51,23 @@ function Mark({ player, ghost = false }) {
   );
 }
 
+// Line through the three winning cells, drawn like a pen stroke across the board.
+// Board coordinates are 0-300 (same as the grid lines), so each cell's centre is 50, 150 or 250.
+function WinSlash({ cells, winner }) {
+  const centre = (i) => [50 + 100 * (i % 3), 50 + 100 * Math.floor(i / 3)];
+  const [x1, y1] = centre(cells[0]);
+  const [x2, y2] = centre(cells[2]);
+  // Extend 35 units past each end so the line runs over the outer marks, not just to their centres
+  const length = Math.hypot(x2 - x1, y2 - y1);
+  const dx = ((x2 - x1) / length) * 35;
+  const dy = ((y2 - y1) / length) * 35;
+  return (
+    <svg className={`win-slash slash-${winner.toLowerCase()}`} viewBox="0 0 300 300" aria-hidden="true">
+      <line x1={x1 - dx} y1={y1 - dy} x2={x2 + dx} y2={y2 + dy} pathLength="1" />
+    </svg>
+  );
+}
+
 // Reusable segmented control used for both the mode and difficulty pickers
 function Segmented({ label, options, value, onChange }) {
   return (
@@ -314,7 +331,7 @@ export default function App() {
             </section>
 
             {/*Grid Layout*/}
-            <div className="board">
+            <div className={`board${winningCells.length ? " has-winner" : ""}`}>
               <svg key={game?.gameId ?? "idle"} className="board-lines" viewBox="0 0 300 300" aria-hidden="true">
                 {/* Vertical lines */}
                 <line x1="100" y1="8" x2="100" y2="292" />
@@ -345,6 +362,9 @@ export default function App() {
                   </button>
                 ))}
               </div>
+
+              {/* Slash through the winning line */}
+              {winningCells.length > 0 && <WinSlash key={game.gameId} cells={winningCells} winner={winner} />}
             </div>
 
             <p className={`status status-${status.tone}${gameOver ? " status-result" : ""}`} role="status" aria-live="polite">
