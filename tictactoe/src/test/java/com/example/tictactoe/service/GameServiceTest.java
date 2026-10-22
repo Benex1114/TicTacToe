@@ -16,6 +16,7 @@ import com.example.tictactoe.domain.GameStatus;
 import com.example.tictactoe.domain.Player;
 import com.example.tictactoe.dto.GameResponse;
 import com.example.tictactoe.entity.Difficulty;
+import com.example.tictactoe.entity.Game;
 import com.example.tictactoe.entity.GameMode;
 import com.example.tictactoe.exception.GameNotFoundException;
 import com.example.tictactoe.exception.InvalidMoveException;
@@ -87,14 +88,6 @@ class GameServiceTest {
         GameResponse game = gameService.createGame(GameMode.MULTI_PLAYER, Difficulty.HARD);
 
         assertNull(game.getDifficulty());
-    }
-
-    @Test
-    void difficultyProbabilitiesMatchTheSpec() {
-        assertEquals(0.2, Difficulty.EASY.getBestMoveProbability());
-        assertEquals(0.5, Difficulty.MEDIUM.getBestMoveProbability());
-        assertEquals(0.8, Difficulty.HARD.getBestMoveProbability());
-        assertEquals(1.0, Difficulty.IMPOSSIBLE.getBestMoveProbability());
     }
 
     // ---------- Move validation ----------
@@ -208,78 +201,246 @@ class GameServiceTest {
         assertThrows(GameNotFoundException.class, () -> gameService.makeMove("does-not-exist", 0));
     }
  
-    // ---------- Difficulty-based AI ----------
+    // ---------- Difficulty levels ----------
+    //
+    // Boards are written as 9 cells, row by row, e.g. "X,_,_,O,_,_,_,_,_".
+    // A fixed Random makes the "random" moves predictable: it always picks the LAST empty cell,
+    // and its roll decides whether Hard slips on its first move (0.0 = slips, 0.99 = doesn't).
 
-    /** A Random that always returns the same values, so the AI's choice is predictable. */
-    private static Random fixedRandom(double nextDouble) {
+    private GameRepository repository;
+
+    /** A Random that always picks the last empty cell and always rolls the given number. */
+    private static Random fixedRandom(double roll) {
         return new Random() {
             @Override
-            public double nextDouble() {
-                return nextDouble;
+            public int nextInt(int bound) {
+                return bound - 1;
             }
 
             @Override
-            public int nextInt(int bound) {
-                return bound - 1; // always the last empty cell
+            public double nextDouble() {
+                return roll;
             }
         };
     }
 
-    @Test
-    void aiPlaysBestMoveWhenRollIsUnderProbability() {
-        GameService service = new GameService(new GameRepository(), fixedRandom(0.0));
-        String id = service.createGame(GameMode.SINGLE_PLAYER, Difficulty.EASY).getGameId();
+    /** Starts a single-player game at the given difficulty with the board already set up (X to move). */
+    private String gameWithBoard(GameService service, Difficulty difficulty, String board) {
+        String id = service.createGame(GameMode.SINGLE_PLAYER, difficulty).getGameId();
+        Game game = repository.findById(id).orElseThrow();
+        game.setBoardState(board);
+        return id;
+    }
 
-        GameResponse board = service.makeMove(id, 4);
+    private GameService serviceWithFixedRandom() {
+        return serviceWithFixedRandom(0.0);
+    }
 
-        // Against a centre opening, minimax answers with the first corner
-        assertEquals("O", board.getBoard().get(0));
+    private GameService serviceWithFixedRandom(double roll) {
+        repository = new GameRepository();
+        return new GameService(repository, fixedRandom(roll));
     }
 
     @Test
-    void aiPlaysRandomMoveWhenRollIsOverProbability() {
-        GameService service = new GameService(new GameRepository(), fixedRandom(0.99));
-        String id = service.createGame(GameMode.SINGLE_PLAYER, Difficulty.EASY).getGameId();
+    void easyTakesAWinWhenOneIsAvailable() {
+        GameService service = serviceWithFixedRandom();
+        // O has 0 and 1; X plays 8, leaving O free to complete the top row at 2
+        String id = gameWithBoard(service, Difficulty.EASY, "O,O,_,X,X,_,_,_,_");
 
-        GameResponse board = service.makeMove(id, 4);
+        GameResponse result = service.makeMove(id, 8);
 
-        // Random path picks the last empty cell (8), not the minimax corner (0)
-        assertEquals("O", board.getBoard().get(8));
-        assertEquals("_", board.getBoard().get(0));
+        assertEquals("O", result.getBoard().get(2));
+        assertEquals(GameStatus.O_WON, result.getStatus());
     }
 
     @Test
-    void impossibleAlwaysPlaysBestMoveEvenWithHighRoll() {
-        GameService service = new GameService(new GameRepository(), fixedRandom(0.99));
-        String id = service.createGame(GameMode.SINGLE_PLAYER, Difficulty.IMPOSSIBLE).getGameId();
+    void easyDoesNotBlockYourWin() {
+        GameService service = serviceWithFixedRandom();
+        // X plays 1 and now threatens 2 (top row); Easy plays randomly instead of blocking
+        String id = gameWithBoard(service, Difficulty.EASY, "X,_,_,O,_,_,_,_,_");
 
-        GameResponse board = service.makeMove(id, 4);
+        GameResponse result = service.makeMove(id, 1);
 
-        assertEquals("O", board.getBoard().get(0));
+        assertEquals("_", result.getBoard().get(2));
     }
 
     @Test
-    void easyPlaysBestMoveLessOftenThanHard() {
-        double easy = bestReplyRate(Difficulty.EASY);
-        double hard = bestReplyRate(Difficulty.HARD);
+    void mediumBlocksYourWin() {
+        GameService service = serviceWithFixedRandom();
+        String id = gameWithBoard(service, Difficulty.MEDIUM, "X,_,_,O,_,_,_,_,_");
 
-        // Expected about 0.30 for EASY and 0.83 for HARD (random moves can also hit the best cell)
-        assertTrue(easy > 0.2 && easy < 0.45, "EASY rate was " + easy);
-        assertTrue(hard > 0.75 && hard < 0.9, "HARD rate was " + hard);
+        GameResponse result = service.makeMove(id, 1);
+
+        assertEquals("O", result.getBoard().get(2));
     }
 
-    /** Plays 1000 games opening in the centre and returns how often the AI found the best reply. */
-    private double bestReplyRate(Difficulty difficulty) {
-        GameService service = new GameService(new GameRepository(), new Random(42));
-        int best = 0;
-        int games = 1000;
-        for (int i = 0; i < games; i++) {
-            String id = service.createGame(GameMode.SINGLE_PLAYER, difficulty).getGameId();
-            if (service.makeMove(id, 4).getBoard().get(0).equals("O")) {
-                best++;
+    @Test
+    void mediumPrefersWinningOverBlocking() {
+        GameService service = serviceWithFixedRandom();
+        // O can win at 2, and X threatens 5: winning comes first
+        String id = gameWithBoard(service, Difficulty.MEDIUM, "O,O,_,X,X,_,_,_,_");
+
+        GameResponse result = service.makeMove(id, 8);
+
+        assertEquals(GameStatus.O_WON, result.getStatus());
+        assertEquals("O", result.getBoard().get(2));
+    }
+
+    @Test
+    void hardAlwaysTakesAWinEvenWhenItWouldSlip() {
+        GameService service = serviceWithFixedRandom(0.0); // roll says "slip" every turn
+        String id = gameWithBoard(service, Difficulty.HARD, "O,O,_,X,X,_,_,_,_");
+
+        GameResponse result = service.makeMove(id, 8);
+
+        assertEquals(GameStatus.O_WON, result.getStatus());
+    }
+
+    @Test
+    void hardAlwaysBlocksEvenWhenItWouldSlip() {
+        GameService service = serviceWithFixedRandom(0.0);
+        // X plays 1 and threatens 2; a slip must never mean leaving that open
+        String id = gameWithBoard(service, Difficulty.HARD, "X,_,_,O,_,_,_,_,_");
+
+        GameResponse result = service.makeMove(id, 1);
+
+        assertEquals("O", result.getBoard().get(2));
+    }
+
+    @Test
+    void hardSlipIsAQuietMistakeNotARandomMove() {
+        GameService service = serviceWithFixedRandom(0.0);
+        String id = service.createGame(GameMode.SINGLE_PLAYER, Difficulty.HARD).getGameId();
+
+        GameResponse result = service.makeMove(id, 4);
+
+        // Against a centre opening the safe replies are corners; the quiet mistakes are the edges (1, 3, 5, 7).
+        // The fixed Random picks the last mistake on the list: edge 7.
+        assertEquals("O", result.getBoard().get(7));
+    }
+
+    @Test
+    void hardPlaysPerfectlyWhenTheRollIsHigh() {
+        GameService service = serviceWithFixedRandom(0.99); // roll says "no slip"
+        String id = service.createGame(GameMode.SINGLE_PLAYER, Difficulty.HARD).getGameId();
+
+        GameResponse result = service.makeMove(id, 4);
+
+        assertEquals("O", result.getBoard().get(0)); // the minimax corner
+    }
+
+    @Test
+    void hardsMistakeCanBeExploitedWithAFork() {
+        GameService service = serviceWithFixedRandom(0.0);
+        String id = service.createGame(GameMode.SINGLE_PLAYER, Difficulty.HARD).getGameId();
+
+        service.makeMove(id, 4);                      // X centre; Hard's quiet mistake is edge 7
+        service.makeMove(id, 0);                      // X threatens 8 (diagonal); Hard must block
+        GameResponse board = service.makeMove(id, 6); // X now threatens 3 and 2 at once: a fork
+        assertEquals(GameStatus.IN_PROGRESS, board.getStatus());
+
+        int winningCell = board.getBoard().get(3).equals("_") ? 3 : 2;
+        GameResponse result = service.makeMove(id, winningCell);
+
+        assertEquals(GameStatus.X_WON, result.getStatus());
+    }
+
+    @Test
+    void hardNeverMissesAWinOrABlockInAnyGame() {
+        // Every possible game against Hard (with its slips): whenever O could win it does,
+        // and whenever X threatened to win, O blocked
+        assertHardNeverGivesAFreeWin(List.of());
+    }
+
+    private void assertHardNeverGivesAFreeWin(List<Integer> xMoves) {
+        GameService fresh = new GameService(new GameRepository(), new Random(11));
+        String id = fresh.createGame(GameMode.SINGLE_PLAYER, Difficulty.HARD).getGameId();
+        GameResponse board = fresh.getGameById(id);
+        List<String> beforeAi = board.getBoard();
+        for (int cell : xMoves) {
+            beforeAi = new java.util.ArrayList<>(board.getBoard());
+            beforeAi.set(cell, "X"); // the board Hard saw when choosing its reply
+            board = fresh.makeMove(id, cell);
+        }
+
+        boolean hardReplied = !xMoves.isEmpty() && board.getStatus() != GameStatus.X_WON && board.getStatus() != GameStatus.DRAW;
+        if (hardReplied) {
+            List<Integer> oWins = winningCells(beforeAi, "O");
+            List<Integer> xThreats = winningCells(beforeAi, "X");
+            if (!oWins.isEmpty()) {
+                assertEquals(GameStatus.O_WON, board.getStatus(), "Hard missed a win after X moves " + xMoves);
+            } else if (xThreats.size() == 1) {
+                // One threat can always be blocked (two threats is a fork: X has earned the win)
+                assertEquals("O", board.getBoard().get(xThreats.get(0)), "Hard missed a block after X moves " + xMoves);
             }
         }
-        return (double) best / games;
+        if (board.getStatus() != GameStatus.IN_PROGRESS) return;
+
+        for (int cell = 0; cell < 9; cell++) {
+            if (board.getBoard().get(cell).equals("_")) {
+                List<Integer> next = new java.util.ArrayList<>(xMoves);
+                next.add(cell);
+                assertHardNeverGivesAFreeWin(next);
+            }
+        }
+    }
+
+    /** Every empty cell where the player would complete a line on their next move. */
+    private static List<Integer> winningCells(List<String> board, String player) {
+        int[][] lines = {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}, {0, 3, 6}, {1, 4, 7}, {2, 5, 8}, {0, 4, 8}, {2, 4, 6}};
+        java.util.Set<Integer> cells = new java.util.TreeSet<>();
+        for (int[] line : lines) {
+            int count = 0;
+            int empty = -1;
+            for (int i : line) {
+                if (board.get(i).equals(player)) count++;
+                else if (board.get(i).equals("_")) empty = i;
+            }
+            if (count == 2 && empty >= 0) cells.add(empty);
+        }
+        return new java.util.ArrayList<>(cells);
+    }
+
+    @Test
+    void impossiblePlaysTheMinimaxMoveFromTheStart() {
+        GameService service = serviceWithFixedRandom();
+        String id = service.createGame(GameMode.SINGLE_PLAYER, Difficulty.IMPOSSIBLE).getGameId();
+
+        GameResponse result = service.makeMove(id, 4);
+
+        // Same "always slip" roll as the Hard tests, but Impossible never slips and takes the corner
+        assertEquals("O", result.getBoard().get(0));
+    }
+
+    @Test
+    void everyDifficultyAlwaysMakesALegalMove() {
+        // Play every possible game against each level; the AI must never break the rules or crash
+        for (Difficulty level : Difficulty.values()) {
+            assertLegalPlay(level, List.of());
+        }
+    }
+
+    private void assertLegalPlay(Difficulty level, List<Integer> xMoves) {
+        GameService fresh = new GameService(new GameRepository(), new Random(7));
+        String id = fresh.createGame(GameMode.SINGLE_PLAYER, level).getGameId();
+        GameResponse board = fresh.getGameById(id);
+        for (int cell : xMoves) {
+            board = fresh.makeMove(id, cell);
+        }
+
+        long xs = Collections.frequency(board.getBoard(), "X");
+        long os = Collections.frequency(board.getBoard(), "O");
+        assertTrue(os == xs || (os == xs - 1 && board.getStatus() != GameStatus.IN_PROGRESS),
+                level + ": wrong number of O moves after X moves " + xMoves);
+        if (board.getStatus() != GameStatus.IN_PROGRESS) return;
+
+        for (int cell = 0; cell < 9; cell++) {
+            if (board.getBoard().get(cell).equals("_")) {
+                List<Integer> next = new java.util.ArrayList<>(xMoves);
+                next.add(cell);
+                assertLegalPlay(level, next);
+            }
+        }
     }
 
     // ---------- Helpers ----------

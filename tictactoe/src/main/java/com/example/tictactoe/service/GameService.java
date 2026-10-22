@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Random;
 import java.util.UUID;
 
@@ -34,6 +35,9 @@ public class GameService {
             {0, 4, 8},
             {2, 4, 6}
     };
+
+    // Chance that Hard makes a "quiet mistake" on a turn where nothing urgent is happening
+    static final double HARD_SLIP_CHANCE = 0.5;
 
     private final GameRepository gameRepository;
     private final Random random;
@@ -219,14 +223,77 @@ public class GameService {
     game.setBoardState(String.join(",", board));
     }
 
-    // Plays the minimax move with the difficulty's probability, otherwise a random empty cell
+    // Each difficulty has its own strategy, so the levels feel different to play against
     private int chooseAiMove(String[] board, Difficulty difficulty) {
-        double probability = (difficulty != null ? difficulty : Difficulty.IMPOSSIBLE).getBestMoveProbability();
+        Difficulty level = difficulty != null ? difficulty : Difficulty.IMPOSSIBLE;
 
-        if (probability >= 1.0 || random.nextDouble() < probability) {
-            return findBestMove(board);
+        return switch (level) {
+            // Rule-based levels: look one move ahead only
+            case EASY -> winningMove(board, Player.O).orElseGet(() -> randomEmptyCell(board));
+            case MEDIUM -> winningMove(board, Player.O)
+                    .or(() -> winningMove(board, Player.X)) // block the player's win
+                    .orElseGet(() -> randomEmptyCell(board));
+            // Search-based levels: minimax looks all the way to the end of the game
+            case HARD -> hardMove(board);
+            case IMPOSSIBLE -> findBestMove(board);
+        };
+    }
+
+    // A cell where the given player would complete a line right now, if there is one
+    private Optional<Integer> winningMove(String[] board, Player player) {
+        for (int i = 0; i < 9; i++) {
+            if (board[i].equals("_")) {
+                board[i] = player.name();
+                boolean wins = hasPlayerWon(board, player);
+                board[i] = "_";
+                if (wins) {
+                    return Optional.of(i);
+                }
+            }
         }
-        return randomEmptyCell(board);
+        return Optional.empty();
+    }
+
+    /**
+     * Hard never gives away a free win: it always takes its own win and always blocks yours.
+     * On any other turn, half the time it makes a "quiet mistake": a move that looks safe
+     * but is worse than the best move, which lets a sharp player set up a fork and win.
+     * If the player doesn't spot it, Hard goes straight back to perfect play.
+     */
+    private int hardMove(String[] board) {
+        Optional<Integer> urgent = winningMove(board, Player.O).or(() -> winningMove(board, Player.X));
+        if (urgent.isPresent()) {
+            return urgent.get();
+        }
+        if (random.nextDouble() < HARD_SLIP_CHANCE) {
+            List<Integer> mistakes = quietMistakes(board);
+            if (!mistakes.isEmpty()) {
+                return mistakes.get(random.nextInt(mistakes.size()));
+            }
+        }
+        return findBestMove(board);
+    }
+
+    // Every move that scores worse than the best one (the position gets worse for O, but nothing is lost straight away)
+    private List<Integer> quietMistakes(String[] board) {
+        int[] scores = new int[9];
+        int best = Integer.MIN_VALUE;
+        for (int i = 0; i < 9; i++) {
+            if (board[i].equals("_")) {
+                board[i] = Player.O.name();
+                // Full search window, so each score is exact rather than a pruned bound
+                scores[i] = minimax(board, false, Integer.MIN_VALUE, Integer.MAX_VALUE, 1);
+                board[i] = "_";
+                best = Math.max(best, scores[i]);
+            }
+        }
+        List<Integer> mistakes = new ArrayList<>();
+        for (int i = 0; i < 9; i++) {
+            if (board[i].equals("_") && scores[i] < best) {
+                mistakes.add(i);
+            }
+        }
+        return mistakes;
     }
 
     private int randomEmptyCell(String[] board) {
@@ -247,7 +314,7 @@ public class GameService {
             if (board[i].equals("_")) {
                 board[i] = Player.O.name();
                 // Alpha starts at the best score found so far, so worse moves are cut off early
-                int score = minimax(board, false, bestScore, Integer.MAX_VALUE);
+                int score = minimax(board, false, bestScore, Integer.MAX_VALUE, 1);
                 board[i] = "_";
 
                 if (score > bestScore) {
@@ -264,11 +331,15 @@ public class GameService {
      * alpha = best score O is already guaranteed, beta = best score X is already guaranteed.
      * When alpha >= beta the rest of this branch can't change the result, so it is skipped.
      * Same moves as plain minimax, far fewer positions searched.
+     *
+     * Scores include depth (how many moves away the result is): a win sooner scores higher,
+     * a loss later scores higher. So the AI wins as fast as it can and, when it's losing,
+     * still blocks and makes the player earn the win instead of giving up.
      */
-    private int minimax(String[] board, boolean isMaximizing, int alpha, int beta) {
+    private int minimax(String[] board, boolean isMaximizing, int alpha, int beta, int depth) {
 
-        if (hasPlayerWon(board, Player.O)) return 10;
-        if (hasPlayerWon(board, Player.X)) return -10;
+        if (hasPlayerWon(board, Player.O)) return 10 - depth;
+        if (hasPlayerWon(board, Player.X)) return depth - 10;
         if (isDraw(board)) return 0;
 
         if (isMaximizing) {
@@ -276,7 +347,7 @@ public class GameService {
             for (int i = 0; i < 9; i++) {
                 if (board[i].equals("_")) {
                     board[i] = Player.O.name();
-                    best = Math.max(best, minimax(board, false, alpha, beta));
+                    best = Math.max(best, minimax(board, false, alpha, beta, depth + 1));
                     board[i] = "_";
                     alpha = Math.max(alpha, best);
                     if (alpha >= beta) break;
@@ -288,7 +359,7 @@ public class GameService {
             for (int i = 0; i < 9; i++) {
                 if (board[i].equals("_")) {
                     board[i] = Player.X.name();
-                    best = Math.min(best, minimax(board, true, alpha, beta));
+                    best = Math.min(best, minimax(board, true, alpha, beta, depth + 1));
                     board[i] = "_";
                     beta = Math.min(beta, best);
                     if (alpha >= beta) break;
