@@ -159,6 +159,16 @@ button:focus-visible {
   gap: 8px;
 }
 
+.difficulty-desc {
+  margin: 0;
+  max-width: 34ch;
+  min-height: 2.8em; /* room for two lines, so the Start button doesn't move when the text changes */
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.4;
+  text-align: center;
+}
+
 .menu-label {
   font-size: 16px;
   color: var(--muted);
