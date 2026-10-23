@@ -4,10 +4,10 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
 const API_BASE = `${API_URL.replace(/\/$/, "")}/api/games`;
 
 const DIFFICULTIES = [
-  { value: "EASY", label: "Easy" },
-  { value: "MEDIUM", label: "Medium" },
-  { value: "HARD", label: "Hard" },
-  { value: "IMPOSSIBLE", label: "Impossible" },
+  { value: "EASY", label: "Easy", description: "Takes a win if it sees one, but never blocks you." },
+  { value: "MEDIUM", label: "Medium", description: "Takes its wins and blocks yours. Otherwise it guesses." },
+  { value: "HARD", label: "Hard", description: "Never misses a block, but sometimes slips. Spot it and set up a fork." },
+  { value: "IMPOSSIBLE", label: "Impossible", description: "Plays perfectly. The best you can get is a draw." },
 ];
 
 const MODES = [
@@ -289,6 +289,10 @@ export default function App() {
               <div className="menu-row">
                 <span className="menu-label">Difficulty</span>
                 <Segmented label="Difficulty" options={DIFFICULTIES} value={difficulty} onChange={setDifficulty} />
+                {/* What the selected level does, so players know what they're up against */}
+                <p className="difficulty-desc" aria-live="polite">
+                  {DIFFICULTIES.find((d) => d.value === difficulty)?.description}
+                </p>
               </div>
             )}
 
