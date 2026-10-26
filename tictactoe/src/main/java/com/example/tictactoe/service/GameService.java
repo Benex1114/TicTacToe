@@ -84,6 +84,25 @@ public class GameService {
                 ? (difficulty != null ? difficulty : Difficulty.IMPOSSIBLE)
                 : null);
         if(game.getGameMode()==GameMode.MULTI_PLAYER) {lastStartingPlayer = starter;}
+        return saveNewGame(game);
+    }
+
+    /**
+     * Starts a two-player game for an online room, with the starting player chosen by the room
+     * (each room alternates on its own, separately from local two-player games).
+     */
+    public GameResponse createOnlineGame(Player starter) {
+        Game game = new Game();
+        game.setId(UUID.randomUUID().toString());
+        game.setBoardState("_,_,_,_,_,_,_,_,_");
+        game.setStartingPlayer(starter);
+        game.setCurrentPlayer(starter);
+        game.setStatus(GameStatus.IN_PROGRESS);
+        game.setGameMode(GameMode.MULTI_PLAYER);
+        return saveNewGame(game);
+    }
+
+    private GameResponse saveNewGame(Game game) {
         game.setCreatedAt(LocalDateTime.now());
         game.setUpdatedAt(LocalDateTime.now());
 
