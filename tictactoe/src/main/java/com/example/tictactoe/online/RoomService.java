@@ -133,6 +133,14 @@ public class RoomService {
         return code == null ? Optional.empty() : Optional.ofNullable(rooms.get(code));
     }
 
+    /** The game currently being played in a room. */
+    public GameResponse currentGame(Room room) {
+        if (room.getGameId() == null) {
+            throw new InvalidMoveException("Waiting for your friend to join");
+        }
+        return gameService.getGameById(room.getGameId());
+    }
+
     /** Number of open rooms (used by tests and could be shown on a status page). */
     public int roomCount() {
         return rooms.size();
