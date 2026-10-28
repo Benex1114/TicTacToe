@@ -1,7 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useOnlineGame } from "./useOnlineGame";
 // Backend address: set VITE_API_URL when deploying, defaults to the local backend
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
 const API_BASE = `${API_URL.replace(/\/$/, "")}/api/games`;
+// Same server over WebSocket: http -> ws, https -> wss
+const WS_URL = `${API_URL.replace(/\/$/, "").replace(/^http/, "ws")}/ws/game`;
 
 const DIFFICULTIES = [
   { value: "EASY", label: "Easy", description: "Takes a win if it sees one, but never blocks you." },
@@ -13,7 +16,11 @@ const DIFFICULTIES = [
 const MODES = [
   { value: "SINGLE_PLAYER", label: "Single player", description: "Play against the computer" },
   { value: "MULTI_PLAYER", label: "Two players", description: "Take turns on one screen" },
+  { value: "ONLINE", label: "Online", description: "Play a friend on their own device" },
 ];
+
+// Invite link for a room: this page with ?room=CODE on the end
+const inviteLink = (code) => `${window.location.origin}${window.location.pathname}?room=${code}`;
 
 const WIN_PATTERNS = [
   [0, 1, 2],
@@ -101,6 +108,76 @@ export default function App() {
   // "menu" = pick mode and difficulty, "game" = playing. Mode can only change on the menu.
   const [screen, setScreen] = useState("menu");
 
+  // ---------- Online play ----------
+  const online = useOnlineGame(WS_URL);
+  const [joinCode, setJoinCode] = useState("");
+  const [linkCopied, setLinkCopied] = useState(false);
+  // A room code from an invite link (?room=K7QM), joined as soon as the server is awake
+  const [codeFromLink, setCodeFromLink] = useState(() => new URLSearchParams(window.location.search).get("room"));
+  const isOnline = gameMode === "ONLINE";
+  const onlineActive = online.phase === "playing" || online.phase === "ended";
+
+  // Opening an invite link: switch to Online and remove ?room from the address,
+  // so refreshing the page later doesn't try to join an old room
+  useEffect(() => {
+    if (!codeFromLink) return;
+    setGameMode("ONLINE");
+    setJoinCode(codeFromLink.toUpperCase());
+    window.history.replaceState(null, "", window.location.pathname);
+  }, [codeFromLink]);
+
+  const joinOnline = online.join;
+  useEffect(() => {
+    if (codeFromLink && serverReady) {
+      joinOnline(codeFromLink);
+      setCodeFromLink(null);
+    }
+  }, [codeFromLink, serverReady, joinOnline]);
+
+  // A new online match (not a rematch) starts with fresh scores
+  const previousPhase = useRef(online.phase);
+  useEffect(() => {
+    if (online.phase === "playing" && previousPhase.current !== "playing" && previousPhase.current !== "ended") {
+      setScores({ X: 0, O: 0, DRAW: 0 });
+    }
+    previousPhase.current = online.phase;
+  }, [online.phase]);
+
+  // Count each finished online game once
+  const scoredGameId = useRef(null);
+  useEffect(() => {
+    const g = online.game;
+    if (g && g.status !== "IN_PROGRESS" && scoredGameId.current !== g.gameId) {
+      scoredGameId.current = g.gameId;
+      const key = g.status === "DRAW" ? "DRAW" : g.status[0]; // "X_WON" -> "X"
+      setScores((s) => ({ ...s, [key]: s[key] + 1 }));
+    }
+  }, [online.game]);
+
+  const copyInviteLink = async () => {
+    try {
+      await navigator.clipboard.writeText(inviteLink(online.code));
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      setLinkCopied(false);
+    }
+  };
+
+  const shareInviteLink = () => {
+    navigator.share?.({ title: "Tic-Tac-Toe", text: `Play Tic-Tac-Toe with me! Room code ${online.code}`, url: inviteLink(online.code) }).catch(() => {});
+  };
+
+  const joinRoom = (event) => {
+    event.preventDefault();
+    if (joinCode.trim().length === 4) online.join(joinCode);
+  };
+
+  const quitOnline = () => {
+    online.leave();
+    setScreen("menu");
+  };
+
   // Wake the backend as soon as the page opens. On Render's free plan it sleeps
   // when unused and takes about a minute to start, so this hides most of the wait.
   useEffect(() => {
@@ -122,9 +199,9 @@ export default function App() {
 
   const isSinglePlayer = gameMode === "SINGLE_PLAYER";
   // Names follow the game being played (it has a difficulty only in single player)
-  const vsComputer = game ? Boolean(game.difficulty) : isSinglePlayer;
-  const nameX = vsComputer ? "You" : "Player X";
-  const nameO = vsComputer ? "Computer" : "Player O";
+  const vsComputer = !onlineActive && (game ? Boolean(game.difficulty) : isSinglePlayer);
+  const nameX = onlineActive ? (online.you === "X" ? "You" : "Friend") : vsComputer ? "You" : "Player X";
+  const nameO = onlineActive ? (online.you === "O" ? "You" : "Friend") : vsComputer ? "Computer" : "Player O";
   const difficultyLabel = DIFFICULTIES.find((d) => d.value === (game?.difficulty ?? difficulty))?.label;
 
   // Start a fresh session from the menu: new scores, then the first game
@@ -160,6 +237,10 @@ export default function App() {
   };
 
   const makeMove = async (index) => {
+    if (onlineActive) {
+      online.move(index); // sent over the WebSocket; the hook shows it straight away
+      return;
+    }
     // Ignore taps while a move is on its way, so fast double-taps can't send two moves
     if (!game || pendingMove || game.board[index] !== "_" || !game.currentPlayer) return;
 
@@ -202,7 +283,13 @@ export default function App() {
     }
   };
 
+  // The game on screen: the online one when playing online, otherwise the local/computer one
+  const shownGame = onlineActive ? online.game : game;
+  const movePending = onlineActive ? online.pending : pendingMove;
+  const myTurn = !onlineActive || shownGame?.currentPlayer === online.you;
+
   const getWinningCells = () => {
+    const game = shownGame;
     if (!game || !game.status.includes("_WON")) return [];
     const winner = game.status.startsWith("X") ? "X" : "O";
 
@@ -227,6 +314,7 @@ export default function App() {
 
   // One line under the board that always says what's happening
   const getStatus = () => {
+    if (onlineActive) return getOnlineStatus();
     // The free server sleeps when unused, so the first request can take up to a minute
     if (loading) return { text: "Connecting to the game server… the first game can take up to a minute.", tone: "idle" };
     if (!game && !serverReady) return { text: "Waking up the game server… this can take up to a minute.", tone: "idle" };
@@ -244,29 +332,72 @@ export default function App() {
     }
   };
 
+  function getOnlineStatus() {
+    const g = online.game;
+    if (online.phase === "ended") {
+      return { text: online.endReason === "opponent-left" ? "Your friend left the game." : "Connection lost.", tone: "idle" };
+    }
+    const you = online.you;
+    switch (g.status) {
+      case "X_WON":
+      case "O_WON":
+        return g.status.startsWith(you) ? { text: "You win!", tone: you.toLowerCase() } : { text: "Your friend wins.", tone: g.status[0].toLowerCase() };
+      case "DRAW":
+        return { text: "It's a draw.", tone: "draw" };
+      default:
+        return g.currentPlayer === you
+          ? { text: "Your turn", tone: you.toLowerCase() }
+          : { text: "Your friend's turn", tone: g.currentPlayer.toLowerCase() };
+    }
+  }
+
   const status = getStatus();
-  const winner = game?.status === "X_WON" ? "X" : game?.status === "O_WON" ? "O" : null;
-  const board = game ? game.board : EMPTY_BOARD;
+  const winner = shownGame?.status === "X_WON" ? "X" : shownGame?.status === "O_WON" ? "O" : null;
+  const board = shownGame ? shownGame.board : EMPTY_BOARD;
 
   const sideClass = (mark) =>
     [
       "player",
       `player-${mark.toLowerCase()}`,
-      game?.currentPlayer === mark ? "is-turn" : "",
+      shownGame?.currentPlayer === mark ? "is-turn" : "",
       winner === mark ? "is-winner" : "",
     ].join(" ");
 
-  const gameOver = game && game.status !== "IN_PROGRESS";
+  const gameOver = Boolean(shownGame && shownGame.status !== "IN_PROGRESS") || online.phase === "ended";
+
+  // Which screen to show: online play drives it while active, otherwise the menu/game state
+  const view = online.phase === "waiting" ? "waiting" : onlineActive ? "game" : screen;
 
   return (
     <main className="page">
       <div className="app">
         {/* The title folds away during a game so the board gets the space */}
-        <div className={`title-wrap${screen === "game" ? " is-hidden" : ""}`} aria-hidden={screen === "game"}>
+        <div className={`title-wrap${view === "game" ? " is-hidden" : ""}`} aria-hidden={view === "game"}>
           <h1 className="title title-pop">Tic‑Tac‑Toe</h1>
         </div>
 
-        {screen === "menu" ? (
+        {view === "waiting" ? (
+          /* ---------- Waiting for a friend to join an online room ---------- */
+          <section className="waiting" aria-label="Waiting for your friend">
+            <span className="menu-label">Room code</span>
+            <p className="room-code" aria-label={`Room code ${online.code.split("").join(" ")}`}>{online.code}</p>
+            <p className="waiting-hint">Send your friend the code, or the invite link.</p>
+            <div className="invite-actions">
+              <button type="button" className="new-game-btn" onClick={copyInviteLink}>
+                {linkCopied ? "Link copied" : "Copy invite link"}
+              </button>
+              {typeof navigator.share === "function" && (
+                <button type="button" className="secondary-btn" onClick={shareInviteLink}>
+                  Share
+                </button>
+              )}
+            </div>
+            <p className="status status-idle" role="status" aria-live="polite">Waiting for your friend to join…</p>
+            <button type="button" className="text-btn" onClick={quitOnline}>
+              Cancel
+            </button>
+          </section>
+        ) : view === "menu" ? (
           /* ---------- Menu: choose how to play ---------- */
           <section className="menu" aria-label="Game setup">
             <div className="mode-cards" role="radiogroup" aria-label="Game mode">
@@ -296,9 +427,35 @@ export default function App() {
               </div>
             )}
 
-            <button type="button" className="new-game-btn" onClick={startFromMenu} disabled={loading}>
-              {loading ? "Starting…" : "Start game"}
-            </button>
+            {isOnline ? (
+              /* Online: create a room, or join a friend's with their code */
+              <div className="online-panel">
+                <button type="button" className="new-game-btn" onClick={online.create} disabled={!serverReady || online.phase === "connecting"}>
+                  {online.phase === "connecting" ? "Connecting…" : "Create a room"}
+                </button>
+                <span className="online-or">or join a friend</span>
+                <form className="join-form" onSubmit={joinRoom}>
+                  <input
+                    className="code-input"
+                    value={joinCode}
+                    onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4))}
+                    placeholder="CODE"
+                    aria-label="Room code"
+                    autoCapitalize="characters"
+                    autoComplete="off"
+                    spellCheck="false"
+                    inputMode="text"
+                  />
+                  <button type="submit" className="secondary-btn" disabled={!serverReady || joinCode.length !== 4 || online.phase === "connecting"}>
+                    Join
+                  </button>
+                </form>
+              </div>
+            ) : (
+              <button type="button" className="new-game-btn" onClick={startFromMenu} disabled={loading}>
+                {loading ? "Starting…" : "Start game"}
+              </button>
+            )}
 
             <p className="status status-idle" role="status" aria-live="polite">
               {loading
@@ -336,7 +493,7 @@ export default function App() {
 
             {/*Grid Layout*/}
             <div className={`board${winningCells.length ? " has-winner" : ""}`}>
-              <svg key={game?.gameId ?? "idle"} className="board-lines" viewBox="0 0 300 300" aria-hidden="true">
+              <svg key={shownGame?.gameId ?? "idle"} className="board-lines" viewBox="0 0 300 300" aria-hidden="true">
                 {/* Vertical lines */}
                 <line x1="100" y1="8" x2="100" y2="292" />
                 <line x1="200" y1="8" x2="200" y2="292" />
@@ -354,21 +511,21 @@ export default function App() {
                     type="button"
                     className={`cell${winningCells.includes(index) ? " is-winning" : ""}`}
                     onClick={() => makeMove(index)}
-                    disabled={!game || pendingMove || cell !== "_" || !game.currentPlayer}
+                    disabled={!shownGame || movePending || !myTurn || online.phase === "ended" || cell !== "_" || !shownGame.currentPlayer}
                     aria-label={cell === "_" ? `Empty cell ${index + 1}` : `${cell} in cell ${index + 1}`}
                   >
                     {cell !== "_" ? (
                       <Mark player={cell} />
                     ) : (
                       // Faint preview of whose mark would go here (desktop hover only)
-                      game?.currentPlayer && !pendingMove && <Mark player={game.currentPlayer} ghost />
+                      shownGame?.currentPlayer && !movePending && myTurn && <Mark player={shownGame.currentPlayer} ghost />
                     )}
                   </button>
                 ))}
               </div>
 
               {/* Slash through the winning line */}
-              {winningCells.length > 0 && <WinSlash key={game.gameId} cells={winningCells} winner={winner} />}
+              {winningCells.length > 0 && <WinSlash key={shownGame.gameId} cells={winningCells} winner={winner} />}
             </div>
 
             <p className={`status status-${status.tone}${gameOver ? " status-result" : ""}`} role="status" aria-live="polite">
@@ -377,19 +534,23 @@ export default function App() {
 
             {/* Always takes up its space so the board doesn't jump; only visible when the game ends */}
             <div className={`end-actions${gameOver ? " is-visible" : ""}`} aria-hidden={!gameOver}>
-              {/* Restart: same mode and difficulty, score kept */}
-              <button type="button" className="new-game-btn" onClick={createGame} disabled={loading || !gameOver}>
-                {loading ? "Starting…" : "Restart"}
-              </button>
+              {/* Restart: same mode and difficulty, score kept (online rematch comes in the next commit) */}
+              {!onlineActive && (
+                <button type="button" className="new-game-btn" onClick={createGame} disabled={loading || !gameOver}>
+                  {loading ? "Starting…" : "Restart"}
+                </button>
+              )}
               {/* Quit: back to the menu, score resets on the next start */}
-              <button type="button" className="secondary-btn" onClick={backToMenu} disabled={!gameOver}>
+              <button type="button" className="secondary-btn" onClick={onlineActive ? quitOnline : backToMenu} disabled={!gameOver}>
                 Quit
               </button>
             </div>
           </>
         )}
 
-        {error && <p className="error" role="alert">{error}</p>}
+        {(isOnline ? online.error : error) && (
+          <p className="error" role="alert">{isOnline ? online.error : error}</p>
+        )}
       </div>
     </main>
   );
