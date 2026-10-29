@@ -178,6 +178,26 @@ export default function App() {
     setScreen("menu");
   };
 
+  // Quit at any time: the first tap asks for a second tap, so a stray touch doesn't end the game
+  const [confirmQuit, setConfirmQuit] = useState(false);
+  const quitTimer = useRef(null);
+  const quitNow = () => {
+    clearTimeout(quitTimer.current);
+    setConfirmQuit(false);
+    if (onlineActive) quitOnline();
+    else backToMenu();
+  };
+  const tapQuit = () => {
+    if (confirmQuit) {
+      quitNow();
+      return;
+    }
+    setConfirmQuit(true);
+    clearTimeout(quitTimer.current);
+    quitTimer.current = setTimeout(() => setConfirmQuit(false), 3000);
+  };
+  useEffect(() => () => clearTimeout(quitTimer.current), []);
+
   // Wake the backend as soon as the page opens. On Render's free plan it sleeps
   // when unused and takes about a minute to start, so this hides most of the wait.
   useEffect(() => {
@@ -335,7 +355,10 @@ export default function App() {
   function getOnlineStatus() {
     const g = online.game;
     if (online.phase === "ended") {
-      return { text: online.endReason === "opponent-left" ? "Your friend left the game." : "Connection lost.", tone: "idle" };
+      return {
+        text: online.endReason === "opponent-left" ? "Your friend left the game." : "Connection lost, so this game has ended.",
+        tone: "idle",
+      };
     }
     const you = online.you;
     switch (g.status) {
@@ -468,6 +491,13 @@ export default function App() {
         ) : (
           /* ---------- Game: board only, no mode switching ---------- */
           <>
+            {/* Quit any time during a game (hidden once it ends, where Quit sits next to Restart) */}
+            <div className={`game-topbar${gameOver ? " is-hidden" : ""}`}>
+              <button type="button" className={`text-btn quit-btn${confirmQuit ? " is-confirming" : ""}`} onClick={tapQuit} disabled={gameOver}>
+                {confirmQuit ? "Tap again to quit" : "Quit"}
+              </button>
+            </div>
+
             {/* Player bar: scores and whose turn it is */}
             <section className="players" aria-label="Scores">
               <div className={sideClass("X")}>
@@ -534,14 +564,20 @@ export default function App() {
 
             {/* Always takes up its space so the board doesn't jump; only visible when the game ends */}
             <div className={`end-actions${gameOver ? " is-visible" : ""}`} aria-hidden={!gameOver}>
-              {/* Restart: same mode and difficulty, score kept (online rematch comes in the next commit) */}
+              {/* Restart: same mode and difficulty, score kept */}
               {!onlineActive && (
                 <button type="button" className="new-game-btn" onClick={createGame} disabled={loading || !gameOver}>
                   {loading ? "Starting…" : "Restart"}
                 </button>
               )}
+              {/* Online: a rematch starts when both players ask (hidden if the friend has gone) */}
+              {onlineActive && online.phase === "playing" && (
+                <button type="button" className="new-game-btn" onClick={online.requestRematch} disabled={!gameOver || online.rematch.mine}>
+                  {online.rematch.mine ? "Waiting…" : online.rematch.theirs ? "Accept rematch" : "Rematch"}
+                </button>
+              )}
               {/* Quit: back to the menu, score resets on the next start */}
-              <button type="button" className="secondary-btn" onClick={onlineActive ? quitOnline : backToMenu} disabled={!gameOver}>
+              <button type="button" className="secondary-btn" onClick={quitNow} disabled={!gameOver}>
                 Quit
               </button>
             </div>

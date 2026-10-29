@@ -125,6 +125,13 @@ class OnlineGameCoordinatorTest {
     }
 
     @Test
+    void pingKeepsTheConnectionAliveWithoutAReply() {
+        startGame();
+
+        assertTrue(send("alice", "type", "PING").isEmpty());
+    }
+
+    @Test
     void unknownMessagesGetAnError() {
         assertEquals("ERROR", to("alice", send("alice", "type", "DANCE")).get("type"));
         assertEquals("ERROR", to("alice", send("alice")).get("type"));

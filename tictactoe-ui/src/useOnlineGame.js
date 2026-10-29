@@ -10,10 +10,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
  *          "playing"    a game is on (or just finished)
  *          "ended"      the friend left or the connection dropped
  *   code, you ("X" or "O"), game (same shape as the REST API), error, pending (a move is on its way)
+ *   rematch: { mine, theirs } - who has asked for another game after one ends
  *
- * Actions: create(), join(code), move(cellIndex), leave()
+ * Actions: create(), join(code), move(cellIndex), requestRematch(), leave()
  */
-const INITIAL = { phase: "idle", code: null, you: null, game: null, error: null, pending: false, endReason: null };
+const NO_REMATCH = { mine: false, theirs: false };
+const INITIAL = { phase: "idle", code: null, you: null, game: null, error: null, pending: false, endReason: null, rematch: NO_REMATCH };
+
+// A tiny message every 25 s so hosting proxies don't close a quiet connection (e.g. while waiting for a friend)
+const KEEP_ALIVE_MS = 25_000;
 
 export function useOnlineGame(wsUrl) {
   const [state, setState] = useState(INITIAL);
@@ -34,7 +39,10 @@ export function useOnlineGame(wsUrl) {
         break;
       case "GAME_STARTED":
         confirmedGameRef.current = message.game;
-        setState((s) => ({ ...s, phase: "playing", code: message.code, you: message.you, game: message.game, error: null, pending: false }));
+        setState((s) => ({ ...s, phase: "playing", code: message.code, you: message.you, game: message.game, error: null, pending: false, rematch: NO_REMATCH }));
+        break;
+      case "REMATCH_REQUESTED":
+        setState((s) => ({ ...s, rematch: { ...s.rematch, theirs: true } }));
         break;
       case "GAME_UPDATE":
         confirmedGameRef.current = message.game;
@@ -62,16 +70,27 @@ export function useOnlineGame(wsUrl) {
         socket.onopen = () => {
           queueRef.current.forEach((m) => socket.send(m));
           queueRef.current = [];
+          socket.keepAlive = setInterval(() => {
+            if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "PING" }));
+          }, KEEP_ALIVE_MS);
         };
         socket.onmessage = handleMessage;
         socket.onclose = () => {
+          clearInterval(socket.keepAlive);
           if (socketRef.current !== socket) return; // an old connection we already replaced
           socketRef.current = null;
-          setState((s) =>
-            s.phase === "idle" || s.phase === "ended"
-              ? s
-              : { ...s, phase: "ended", endReason: "connection-lost", pending: false }
-          );
+          queueRef.current = [];
+          setState((s) => {
+            if (s.phase === "idle" || s.phase === "ended") return s;
+            // Never got into a room: back to the menu with a clear message
+            if (s.phase === "connecting") {
+              return { ...INITIAL, error: "Couldn't connect to the game server. Check your internet and try again." };
+            }
+            if (s.phase === "waiting") {
+              return { ...INITIAL, error: "Lost connection while waiting, so the room was closed. Create a new one to try again." };
+            }
+            return { ...s, phase: "ended", endReason: "connection-lost", pending: false };
+          });
         };
       }
       const text = JSON.stringify(message);
@@ -120,12 +139,23 @@ export function useOnlineGame(wsUrl) {
     [send]
   );
 
+  // Ask for another game; it starts when your friend asks too (or straight away if they already did)
+  const requestRematch = useCallback(() => {
+    const s = stateRef.current;
+    if (s.phase !== "playing" || !s.game || s.game.status === "IN_PROGRESS" || s.rematch.mine) return;
+    send({ type: "REMATCH" });
+    setState((current) => ({ ...current, rematch: { ...current.rematch, mine: true } }));
+  }, [send]);
+
   // Closing the connection is enough: the server treats it as leaving and tells the friend
   const leave = useCallback(() => {
     const socket = socketRef.current;
     socketRef.current = null;
     queueRef.current = [];
-    if (socket) socket.close();
+    if (socket) {
+      clearInterval(socket.keepAlive);
+      socket.close();
+    }
     confirmedGameRef.current = null;
     setState(INITIAL);
   }, []);
@@ -133,5 +163,5 @@ export function useOnlineGame(wsUrl) {
   // Close the connection if the page or component goes away
   useEffect(() => () => socketRef.current?.close(), []);
 
-  return { ...state, create, join, move, leave };
+  return { ...state, create, join, move, requestRematch, leave };
 }

@@ -216,6 +216,29 @@ button:focus-visible {
   color: var(--text);
 }
 
+/* Quit button above the player bar during a game */
+.game-topbar {
+  width: 100%;
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: -16px; /* sits close to the player bar instead of a full gap */
+}
+
+/* Keeps its space when hidden, so the board doesn't move when the game ends */
+.game-topbar.is-hidden {
+  visibility: hidden;
+}
+
+.quit-btn {
+  padding: 4px 2px;
+  font-size: 15px;
+  transition: color 0.2s ease;
+}
+
+.quit-btn.is-confirming {
+  color: var(--o);
+}
+
 /* ---------- Online: waiting for a friend ---------- */
 .waiting {
   display: flex;
@@ -284,6 +307,7 @@ button:focus-visible {
 
 .end-actions > button {
   min-width: 140px;
+  white-space: nowrap;
 }
 
 .secondary-btn {
@@ -639,6 +663,7 @@ button:focus-visible {
 }
 
 @media (max-width: 480px) {
+  .end-actions > button { min-width: 0; padding-left: 26px; padding-right: 26px; }
   /* Three mode cards stack as rows on phones */
   .mode-cards { grid-template-columns: 1fr; gap: 10px; }
   .mode-card { flex-direction: row; justify-content: space-between; align-items: baseline; padding: 16px 18px; text-align: left; }
