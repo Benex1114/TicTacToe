@@ -22,6 +22,7 @@ import com.example.tictactoe.dto.GameResponse;
  *   MOVE   { cellIndex }   play a move
  *   REMATCH                ask for another game after one ends
  *   LEAVE                  quit the room
+ *   PING                   keep-alive so idle connections aren't closed (no reply)
  *
  * Messages sent to players:
  *   ROOM_CREATED      { code, you }        to the creator, while waiting for a friend
@@ -53,6 +54,7 @@ public class OnlineGameCoordinator {
                 case "MOVE" -> move(playerId, message.get("cellIndex"));
                 case "REMATCH" -> rematch(playerId);
                 case "LEAVE" -> disconnected(playerId);
+                case "PING" -> List.of();
                 default -> List.of(error(playerId, "Unknown message type: " + type));
             };
         } catch (RuntimeException e) {
