@@ -75,6 +75,49 @@ function WinSlash({ cells, winner }) {
   );
 }
 
+// Small blurred X's and O's drifting slowly in the background.
+// Positions and timings come from a fixed formula, so they're the same on every render.
+const BACKGROUND_MARKS = Array.from({ length: 22 }, (_, i) => {
+  const r = (n) => ((Math.sin(i * 12.9898 + n * 78.233) * 43758.5453) % 1 + 1) % 1; // repeatable 0-1 values
+  return {
+    player: i % 2 === 0 ? "X" : "O",
+    left: `${Math.round(r(1) * 92)}%`,
+    top: `${Math.round(r(2) * 88)}%`,
+    size: `${Math.round(28 + r(3) * 46)}px`,
+    duration: `${Math.round(24 + r(4) * 30)}s`,
+    delay: `-${Math.round(r(5) * 30)}s`, // negative delay: already mid-drift when the page opens
+    dx: `${Math.round((r(6) - 0.5) * 160)}px`,
+    dy: `${Math.round((r(7) - 0.5) * 140)}px`,
+    rotate: `${Math.round((r(8) - 0.5) * 120)}deg`,
+  };
+});
+
+function BackgroundMarks() {
+  return (
+    <div className="bg-marks" aria-hidden="true">
+      {BACKGROUND_MARKS.map((m, i) => (
+        <span
+          key={i}
+          className={`bg-mark bg-mark-${m.player.toLowerCase()}`}
+          style={{
+            left: m.left,
+            top: m.top,
+            width: m.size,
+            height: m.size,
+            animationDuration: m.duration,
+            animationDelay: m.delay,
+            "--dx": m.dx,
+            "--dy": m.dy,
+            "--rot": m.rotate,
+          }}
+        >
+          <Mark player={m.player} />
+        </span>
+      ))}
+    </div>
+  );
+}
+
 // Reusable segmented control used for both the mode and difficulty pickers
 function Segmented({ label, options, value, onChange }) {
   return (
@@ -391,9 +434,50 @@ export default function App() {
   // Which screen to show: online play drives it while active, otherwise the menu/game state
   const view = online.phase === "waiting" ? "waiting" : onlineActive ? "game" : screen;
 
+  // ---------- Player cards (wide screens) ----------
+  // While your move is on its way, the turn has really passed to the other side,
+  // so their card lights up straight away instead of after the server replies
+  const other = (mark) => (mark === "X" ? "O" : "X");
+  const inProgress = shownGame?.status === "IN_PROGRESS" && online.phase !== "ended";
+  const turn = inProgress ? (movePending ? other(shownGame.currentPlayer) : shownGame.currentPlayer) : null;
+
+  const cardStatus = (mark) => {
+    const name = mark === "X" ? nameX : nameO;
+    if (winner === mark) return "Wins!";
+    if (shownGame?.status === "DRAW") return "Draw";
+    if (turn !== mark) return "\u00a0";
+    if (name === "You") return "Your turn";
+    if (name === "Computer") return movePending ? "Thinking…" : "Computer's turn";
+    if (name === "Friend") return "Friend's turn";
+    return `${name}'s turn`;
+  };
+
+  const cardClass = (mark) =>
+    [
+      "player-card",
+      `card-${mark.toLowerCase()}`,
+      turn === mark ? "is-turn" : "",
+      turn && turn !== mark ? "is-dim" : "",
+      winner === mark ? "is-winner" : "",
+      winner && winner !== mark ? "is-dim" : "",
+    ].join(" ");
+
+  const playerCard = (mark) => (
+    <aside className={cardClass(mark)} aria-label={`${mark === "X" ? nameX : nameO}, ${scores[mark]} wins`}>
+      <span className="card-mark" aria-hidden="true"><Mark player={mark} /></span>
+      <span className="card-name">{mark === "X" ? nameX : nameO}</span>
+      {mark === "O" && vsComputer && <span className="card-sub">{difficultyLabel}</span>}
+      <span className="card-score">{scores[mark]}</span>
+      <span className="card-score-label">{scores[mark] === 1 ? "win" : "wins"}</span>
+      <span className="card-status">{cardStatus(mark)}</span>
+    </aside>
+  );
+
   return (
     <main className="page">
-      <div className="app">
+      <BackgroundMarks />
+
+      <div className={`app${view === "game" ? " is-game" : ""}`}>
         {/* The title folds away during a game so the board gets the space */}
         <div className={`title-wrap${view === "game" ? " is-hidden" : ""}`} aria-hidden={view === "game"}>
           <h1 className="title title-pop">Tic‑Tac‑Toe</h1>
@@ -489,99 +573,108 @@ export default function App() {
             </p>
           </section>
         ) : (
-          /* ---------- Game: board only, no mode switching ---------- */
-          <>
-            {/* Quit any time during a game (hidden once it ends, where Quit sits next to Restart) */}
-            <div className={`game-topbar${gameOver ? " is-hidden" : ""}`}>
-              <button type="button" className={`text-btn quit-btn${confirmQuit ? " is-confirming" : ""}`} onClick={tapQuit} disabled={gameOver}>
-                {confirmQuit ? "Tap again to quit" : "Quit"}
-              </button>
-            </div>
+          /* ---------- Game: player cards either side of the board on wide screens ---------- */
+          <div className="game-layout">
+            {playerCard("X")}
 
-            {/* Player bar: scores and whose turn it is */}
-            <section className="players" aria-label="Scores">
-              <div className={sideClass("X")}>
-                <span className="player-mark" aria-hidden="true"><Mark player="X" /></span>
-                <span className="player-name">{nameX}</span>
-                <span className="player-score">{scores.X}</span>
+            <div className="game-main">
+              {/* Quit any time during a game (hidden once it ends, where Quit sits next to Restart) */}
+              <div className={`game-topbar${gameOver ? " is-hidden" : ""}`}>
+                <button type="button" className={`text-btn quit-btn${confirmQuit ? " is-confirming" : ""}`} onClick={tapQuit} disabled={gameOver}>
+                  {confirmQuit ? "Tap again to quit" : "Quit"}
+                </button>
               </div>
 
-              <div className="draws">
-                <span className="draws-score">{scores.DRAW}</span>
-                <span className="draws-label">draws</span>
+              {/* Player bar: scores and whose turn it is */}
+              <section className="players" aria-label="Scores">
+                <div className={sideClass("X")}>
+                  <span className="player-mark" aria-hidden="true"><Mark player="X" /></span>
+                  <span className="player-name">{nameX}</span>
+                  <span className="player-score">{scores.X}</span>
+                </div>
+
+                <div className="draws">
+                  <span className="draws-score">{scores.DRAW}</span>
+                  <span className="draws-label">draws</span>
+                </div>
+
+                <div className={sideClass("O")}>
+                  <span className="player-score">{scores.O}</span>
+                  <span className="player-name">
+                    {nameO}
+                    {vsComputer && <small className="player-sub">{difficultyLabel}</small>}
+                  </span>
+                  <span className="player-mark" aria-hidden="true"><Mark player="O" /></span>
+                </div>
+              </section>
+
+              {/* Wide screens: the draw count sits above the board (the cards show each player's wins) */}
+              <p className="draw-count">{scores.DRAW} {scores.DRAW === 1 ? "draw" : "draws"}</p>
+
+              {/*Grid Layout*/}
+              <div className={`board${winningCells.length ? " has-winner" : ""}`}>
+                <svg key={shownGame?.gameId ?? "idle"} className="board-lines" viewBox="0 0 300 300" aria-hidden="true">
+                  {/* Vertical lines */}
+                  <line x1="100" y1="8" x2="100" y2="292" />
+                  <line x1="200" y1="8" x2="200" y2="292" />
+
+                  {/* Horizontal lines */}
+                  <line x1="8" y1="100" x2="292" y2="100" />
+                  <line x1="8" y1="200" x2="292" y2="200" />
+                </svg>
+
+                {/* Click & render layer */}
+                <div className="cells">
+                  {board.map((cell, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      className={`cell${winningCells.includes(index) ? " is-winning" : ""}`}
+                      onClick={() => makeMove(index)}
+                      disabled={!shownGame || movePending || !myTurn || online.phase === "ended" || cell !== "_" || !shownGame.currentPlayer}
+                      aria-label={cell === "_" ? `Empty cell ${index + 1}` : `${cell} in cell ${index + 1}`}
+                    >
+                      {cell !== "_" ? (
+                        <Mark player={cell} />
+                      ) : (
+                        // Faint preview of whose mark would go here (desktop hover only)
+                        shownGame?.currentPlayer && !movePending && myTurn && <Mark player={shownGame.currentPlayer} ghost />
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Slash through the winning line */}
+                {winningCells.length > 0 && <WinSlash key={shownGame.gameId} cells={winningCells} winner={winner} />}
               </div>
 
-              <div className={sideClass("O")}>
-                <span className="player-score">{scores.O}</span>
-                <span className="player-name">
-                  {nameO}
-                  {vsComputer && <small className="player-sub">{difficultyLabel}</small>}
-                </span>
-                <span className="player-mark" aria-hidden="true"><Mark player="O" /></span>
-              </div>
-            </section>
+              <p className={`status status-${status.tone}${gameOver ? " status-result" : " status-turn"}`} role="status" aria-live="polite">
+                {status.text}
+              </p>
 
-            {/*Grid Layout*/}
-            <div className={`board${winningCells.length ? " has-winner" : ""}`}>
-              <svg key={shownGame?.gameId ?? "idle"} className="board-lines" viewBox="0 0 300 300" aria-hidden="true">
-                {/* Vertical lines */}
-                <line x1="100" y1="8" x2="100" y2="292" />
-                <line x1="200" y1="8" x2="200" y2="292" />
-
-                {/* Horizontal lines */}
-                <line x1="8" y1="100" x2="292" y2="100" />
-                <line x1="8" y1="200" x2="292" y2="200" />
-              </svg>
-
-              {/* Click & render layer */}
-              <div className="cells">
-                {board.map((cell, index) => (
-                  <button
-                    key={index}
-                    type="button"
-                    className={`cell${winningCells.includes(index) ? " is-winning" : ""}`}
-                    onClick={() => makeMove(index)}
-                    disabled={!shownGame || movePending || !myTurn || online.phase === "ended" || cell !== "_" || !shownGame.currentPlayer}
-                    aria-label={cell === "_" ? `Empty cell ${index + 1}` : `${cell} in cell ${index + 1}`}
-                  >
-                    {cell !== "_" ? (
-                      <Mark player={cell} />
-                    ) : (
-                      // Faint preview of whose mark would go here (desktop hover only)
-                      shownGame?.currentPlayer && !movePending && myTurn && <Mark player={shownGame.currentPlayer} ghost />
-                    )}
+              {/* Always takes up its space so the board doesn't jump; only visible when the game ends */}
+              <div className={`end-actions${gameOver ? " is-visible" : ""}`} aria-hidden={!gameOver}>
+                {/* Restart: same mode and difficulty, score kept */}
+                {!onlineActive && (
+                  <button type="button" className="new-game-btn" onClick={createGame} disabled={loading || !gameOver}>
+                    {loading ? "Starting…" : "Restart"}
                   </button>
-                ))}
+                )}
+                {/* Online: a rematch starts when both players ask (hidden if the friend has gone) */}
+                {onlineActive && online.phase === "playing" && (
+                  <button type="button" className="new-game-btn" onClick={online.requestRematch} disabled={!gameOver || online.rematch.mine}>
+                    {online.rematch.mine ? "Waiting…" : online.rematch.theirs ? "Accept rematch" : "Rematch"}
+                  </button>
+                )}
+                {/* Quit: back to the menu, score resets on the next start */}
+                <button type="button" className="secondary-btn" onClick={quitNow} disabled={!gameOver}>
+                  Quit
+                </button>
               </div>
-
-              {/* Slash through the winning line */}
-              {winningCells.length > 0 && <WinSlash key={shownGame.gameId} cells={winningCells} winner={winner} />}
             </div>
 
-            <p className={`status status-${status.tone}${gameOver ? " status-result" : ""}`} role="status" aria-live="polite">
-              {status.text}
-            </p>
-
-            {/* Always takes up its space so the board doesn't jump; only visible when the game ends */}
-            <div className={`end-actions${gameOver ? " is-visible" : ""}`} aria-hidden={!gameOver}>
-              {/* Restart: same mode and difficulty, score kept */}
-              {!onlineActive && (
-                <button type="button" className="new-game-btn" onClick={createGame} disabled={loading || !gameOver}>
-                  {loading ? "Starting…" : "Restart"}
-                </button>
-              )}
-              {/* Online: a rematch starts when both players ask (hidden if the friend has gone) */}
-              {onlineActive && online.phase === "playing" && (
-                <button type="button" className="new-game-btn" onClick={online.requestRematch} disabled={!gameOver || online.rematch.mine}>
-                  {online.rematch.mine ? "Waiting…" : online.rematch.theirs ? "Accept rematch" : "Rematch"}
-                </button>
-              )}
-              {/* Quit: back to the menu, score resets on the next start */}
-              <button type="button" className="secondary-btn" onClick={quitNow} disabled={!gameOver}>
-                Quit
-              </button>
-            </div>
-          </>
+            {playerCard("O")}
+          </div>
         )}
 
         {(isOnline ? online.error : error) && (
