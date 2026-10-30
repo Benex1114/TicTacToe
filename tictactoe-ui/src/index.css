@@ -55,6 +55,208 @@ button:focus-visible {
   gap: 28px;
 }
 
+/* ---------- Game layout: player cards either side of the board on wide screens ---------- */
+.page {
+  position: relative;
+}
+
+.app {
+  position: relative; /* sits above the drifting background marks */
+  z-index: 1;
+}
+
+.app.is-game {
+  max-width: 1120px;
+}
+
+.game-layout {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+}
+
+.game-main {
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+}
+
+/* Cards and the draw line only exist on wide screens; phones keep the bar on top */
+.player-card,
+.draw-count {
+  display: none;
+}
+
+@media (min-width: 1000px) {
+  .game-layout {
+    grid-template-columns: 220px minmax(0, 560px) 220px;
+    gap: 56px;
+    align-items: center;
+  }
+
+  .player-card {
+    display: flex;
+  }
+
+  .draw-count {
+    display: block;
+  }
+
+  /* The cards replace the bar on top, and they show whose turn it is */
+  .game-main .players {
+    display: none;
+  }
+
+  .status.status-turn {
+    visibility: hidden;
+  }
+}
+
+.player-card {
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 30px 20px 24px;
+  border-radius: 18px;
+  border: 2px solid transparent;
+  background: #172238; /* solid, so the background marks never show through */
+  text-align: center;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, opacity 0.25s ease, transform 0.25s ease;
+}
+
+.card-mark {
+  display: flex;
+  width: 76px;
+  height: 76px;
+  margin-bottom: 6px;
+}
+
+.card-mark .mark {
+  width: 100%;
+  height: 100%;
+}
+
+.card-name {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.card-sub {
+  margin-top: -4px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.card-score {
+  margin-top: 10px;
+  font-size: 48px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.card-score-label {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.card-status {
+  margin-top: 12px;
+  min-height: 1.4em;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.card-x .card-status { color: var(--x); }
+.card-o .card-status { color: var(--o); }
+
+/* Whose turn: that card lights up in its colour, the other one dims */
+.card-x.is-turn {
+  border-color: var(--x);
+  box-shadow: 0 0 36px rgba(56, 189, 248, 0.35);
+  transform: scale(1.03);
+}
+
+.card-o.is-turn {
+  border-color: var(--o);
+  box-shadow: 0 0 36px rgba(244, 114, 182, 0.35);
+  transform: scale(1.03);
+}
+
+/* Dim the contents, not the card itself, so the card stays solid */
+.player-card > * {
+  transition: opacity 0.25s ease;
+}
+
+.player-card.is-dim > * {
+  opacity: 0.4;
+}
+
+.card-x.is-winner {
+  border-color: var(--x);
+  box-shadow: 0 0 48px rgba(56, 189, 248, 0.55);
+  transform: scale(1.05);
+}
+
+.card-o.is-winner {
+  border-color: var(--o);
+  box-shadow: 0 0 48px rgba(244, 114, 182, 0.55);
+  transform: scale(1.05);
+}
+
+.draw-count {
+  margin: -12px 0 -12px;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+/* ---------- Drifting background marks ---------- */
+.bg-marks {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  /* Fade the marks out towards the middle, so they only fill the edges and never sit behind the board */
+  -webkit-mask-image: radial-gradient(ellipse 32% 42% at 50% 50%, transparent 55%, #000 100%);
+  mask-image: radial-gradient(ellipse 32% 42% at 50% 50%, transparent 55%, #000 100%);
+}
+
+.bg-mark {
+  position: absolute;
+  display: flex;
+  opacity: 0.16;
+  filter: blur(2px);
+  will-change: transform;
+  animation-name: drift;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+
+.bg-mark .mark,
+.bg-mark .mark-stroke {
+  width: 100%;
+  height: 100%;
+  animation: none; /* drawn once, no stroke animation in the background */
+}
+
+@keyframes drift {
+  from { transform: translate(0, 0) rotate(0deg); }
+  to { transform: translate(var(--dx), var(--dy)) rotate(var(--rot)); }
+}
+
+/* Phones: fewer and fainter, so they never compete with the board */
+@media (max-width: 600px) {
+  .bg-mark { opacity: 0.1; }
+  .bg-mark:nth-child(n + 12) { display: none; }
+}
+
 /* Title: shown on the menu, slides up and folds away during a game */
 .title-wrap {
   display: grid;
