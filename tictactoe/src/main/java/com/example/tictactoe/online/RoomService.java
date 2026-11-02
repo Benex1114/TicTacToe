@@ -47,8 +47,12 @@ public class RoomService {
         this.random = random;
     }
 
+    public Room createRoom(String playerId) {
+        return createRoom(playerId, null);
+    }
+
     /** Creates a room with a new code. The creator plays X and waits for a friend to join. */
-    public synchronized Room createRoom(String playerId) {
+    public synchronized Room createRoom(String playerId, String name) {
         leave(playerId); // a player can only be in one room at a time
         String code;
         do {
@@ -56,13 +60,18 @@ public class RoomService {
         } while (rooms.containsKey(code));
 
         Room room = new Room(code, playerId);
+        room.setName(Player.X, name);
         rooms.put(code, room);
         roomOfPlayer.put(playerId, code);
         return room;
     }
 
+    public Room joinRoom(String code, String playerId) {
+        return joinRoom(code, playerId, null);
+    }
+
     /** Joins a friend's room as O and starts the first game. */
-    public synchronized Room joinRoom(String code, String playerId) {
+    public synchronized Room joinRoom(String code, String playerId, String name) {
         Room room = rooms.get(normalise(code));
         if (room == null) {
             throw new RoomNotFoundException(normalise(code));
@@ -72,6 +81,7 @@ public class RoomService {
         }
         leave(playerId);
         room.setPlayerO(playerId);
+        room.setName(Player.O, name);
         roomOfPlayer.put(playerId, room.getCode());
         startNewGame(room);
         return room;

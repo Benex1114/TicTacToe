@@ -19,6 +19,43 @@ const MODES = [
   { value: "ONLINE", label: "Online", description: "Play a friend on their own device" },
 ];
 
+// Player names are remembered on this device (browser storage), so they're filled in next time.
+// Storage can be unavailable (private windows, blocked cookies), so every access is guarded.
+const NAMES_KEY = "tictactoe-names";
+const EMPTY_NAMES = { solo: "", x: "", o: "", online: "" };
+const MAX_NAME_LENGTH = 16;
+const loadNames = () => {
+  try {
+    return { ...EMPTY_NAMES, ...JSON.parse(localStorage.getItem(NAMES_KEY) || "{}") };
+  } catch {
+    return EMPTY_NAMES;
+  }
+};
+
+// One name box with an optional X or O beside it
+function NameField({ mark, label, value, onChange, inputRef }) {
+  return (
+    <label className="name-field">
+      {mark && (
+        <span className="name-mark" aria-hidden="true">
+          <Mark player={mark} />
+        </span>
+      )}
+      <input
+        className="name-input"
+        value={value}
+        onChange={(e) => onChange(e.target.value.slice(0, MAX_NAME_LENGTH))}
+        placeholder={label}
+        aria-label={label}
+        maxLength={MAX_NAME_LENGTH}
+        autoComplete="nickname"
+        spellCheck="false"
+        ref={inputRef}
+      />
+    </label>
+  );
+}
+
 // Invite link for a room: this page with ?room=CODE on the end
 const inviteLink = (code) => `${window.location.origin}${window.location.pathname}?room=${code}`;
 
@@ -160,6 +197,24 @@ export default function App() {
   const isOnline = gameMode === "ONLINE";
   const onlineActive = online.phase === "playing" || online.phase === "ended";
 
+  // ---------- Player names ----------
+  const [names, setNames] = useState(loadNames);
+  const setName = (key) => (value) => setNames((n) => ({ ...n, [key]: value }));
+  useEffect(() => {
+    try {
+      localStorage.setItem(NAMES_KEY, JSON.stringify(names));
+    } catch {
+      // storage not available: names just aren't remembered
+    }
+  }, [names]);
+  // Opened an invite link without a saved name: ask for one before joining
+  const [askNameToJoin, setAskNameToJoin] = useState(false);
+  const onlineNameRef = useRef(null);
+  // Put the cursor in the name box with the name selected, so typing replaces it
+  useEffect(() => {
+    if (askNameToJoin) onlineNameRef.current?.select();
+  }, [askNameToJoin]);
+
   // Opening an invite link: switch to Online and remove ?room from the address,
   // so refreshing the page later doesn't try to join an old room
   useEffect(() => {
@@ -169,13 +224,14 @@ export default function App() {
     window.history.replaceState(null, "", window.location.pathname);
   }, [codeFromLink]);
 
-  const joinOnline = online.join;
+  // Never join straight from a link: the code is filled in and the player confirms their name first.
+  // (A name saved on this device may belong to someone else, e.g. the friend who sent the link.)
   useEffect(() => {
-    if (codeFromLink && serverReady) {
-      joinOnline(codeFromLink);
+    if (codeFromLink) {
+      setAskNameToJoin(true);
       setCodeFromLink(null);
     }
-  }, [codeFromLink, serverReady, joinOnline]);
+  }, [codeFromLink]);
 
   // A new online match (not a rematch) starts with fresh scores
   const previousPhase = useRef(online.phase);
@@ -213,7 +269,10 @@ export default function App() {
 
   const joinRoom = (event) => {
     event.preventDefault();
-    if (joinCode.trim().length === 4) online.join(joinCode);
+    if (joinCode.trim().length === 4) {
+      setAskNameToJoin(false);
+      online.join(joinCode, names.online);
+    }
   };
 
   const quitOnline = () => {
@@ -263,8 +322,19 @@ export default function App() {
   const isSinglePlayer = gameMode === "SINGLE_PLAYER";
   // Names follow the game being played (it has a difficulty only in single player)
   const vsComputer = !onlineActive && (game ? Boolean(game.difficulty) : isSinglePlayer);
-  const nameX = onlineActive ? (online.you === "X" ? "You" : "Friend") : vsComputer ? "You" : "Player X";
-  const nameO = onlineActive ? (online.you === "O" ? "You" : "Friend") : vsComputer ? "Computer" : "Player O";
+  // Names come from the server online (so both players see the same ones), otherwise from the menu boxes
+  const nameX = onlineActive
+    ? online.names?.X ?? "Player X"
+    : vsComputer
+      ? names.solo.trim() || "You"
+      : names.x.trim() || "Player X";
+  const nameO = onlineActive
+    ? online.names?.O ?? "Player O"
+    : vsComputer
+      ? "Computer"
+      : names.o.trim() || "Player O";
+  // The mark that belongs to the person holding this device (none when two people share one screen)
+  const myMark = onlineActive ? online.you : vsComputer ? "X" : null;
   const difficultyLabel = DIFFICULTIES.find((d) => d.value === (game?.difficulty ?? difficulty))?.label;
 
   // Start a fresh session from the menu: new scores, then the first game
@@ -384,22 +454,23 @@ export default function App() {
     if (!game) return { text: "Server is ready.", tone: "idle" };
     switch (game.status) {
       case "X_WON":
-        return { text: vsComputer ? "You win!" : "Player X wins!", tone: "x" };
+        return { text: vsComputer ? "You win!" : `${nameX} wins!`, tone: "x" };
       case "O_WON":
-        return { text: vsComputer ? "Computer wins." : "Player O wins!", tone: "o" };
+        return { text: vsComputer ? "Computer wins." : `${nameO} wins!`, tone: "o" };
       case "DRAW":
         return { text: "It's a draw.", tone: "draw" };
       default:
         if (vsComputer) return pendingMove ? { text: "Computer is thinking…", tone: "o" } : { text: "Your turn", tone: "x" };
-        return { text: `Player ${game.currentPlayer}'s turn`, tone: game.currentPlayer.toLowerCase() };
+        return { text: `${game.currentPlayer === "X" ? nameX : nameO}'s turn`, tone: game.currentPlayer.toLowerCase() };
     }
   };
 
   function getOnlineStatus() {
     const g = online.game;
+    const friend = online.you === "X" ? nameO : nameX;
     if (online.phase === "ended") {
       return {
-        text: online.endReason === "opponent-left" ? "Your friend left the game." : "Connection lost, so this game has ended.",
+        text: online.endReason === "opponent-left" ? `${friend} left the game.` : "Connection lost, so this game has ended.",
         tone: "idle",
       };
     }
@@ -407,13 +478,13 @@ export default function App() {
     switch (g.status) {
       case "X_WON":
       case "O_WON":
-        return g.status.startsWith(you) ? { text: "You win!", tone: you.toLowerCase() } : { text: "Your friend wins.", tone: g.status[0].toLowerCase() };
+        return g.status.startsWith(you) ? { text: "You win!", tone: you.toLowerCase() } : { text: `${friend} wins.`, tone: g.status[0].toLowerCase() };
       case "DRAW":
         return { text: "It's a draw.", tone: "draw" };
       default:
         return g.currentPlayer === you
           ? { text: "Your turn", tone: you.toLowerCase() }
-          : { text: "Your friend's turn", tone: g.currentPlayer.toLowerCase() };
+          : { text: `${friend}'s turn`, tone: g.currentPlayer.toLowerCase() };
     }
   }
 
@@ -446,9 +517,8 @@ export default function App() {
     if (winner === mark) return "Wins!";
     if (shownGame?.status === "DRAW") return "Draw";
     if (turn !== mark) return "\u00a0";
-    if (name === "You") return "Your turn";
-    if (name === "Computer") return movePending ? "Thinking…" : "Computer's turn";
-    if (name === "Friend") return "Friend's turn";
+    if (mark === myMark) return "Your turn";
+    if (vsComputer) return movePending ? "Thinking…" : "Computer's turn";
     return `${name}'s turn`;
   };
 
@@ -467,6 +537,8 @@ export default function App() {
       <span className="card-mark" aria-hidden="true"><Mark player={mark} /></span>
       <span className="card-name">{mark === "X" ? nameX : nameO}</span>
       {mark === "O" && vsComputer && <span className="card-sub">{difficultyLabel}</span>}
+      {/* Your own card says "You" under your name (when you've typed one) */}
+      {mark === myMark && (mark === "X" ? nameX : nameO) !== "You" && <span className="card-sub">You</span>}
       <span className="card-score">{scores[mark]}</span>
       <span className="card-score-label">{scores[mark] === 1 ? "win" : "wins"}</span>
       <span className="card-status">{cardStatus(mark)}</span>
@@ -523,6 +595,20 @@ export default function App() {
               ))}
             </div>
 
+            {/* Names: shown on the cards, turns and results */}
+            <div className={`name-fields${gameMode === "MULTI_PLAYER" ? " is-pair" : ""}`}>
+              {gameMode === "MULTI_PLAYER" ? (
+                <>
+                  <NameField mark="X" label="Player X name" value={names.x} onChange={setName("x")} />
+                  <NameField mark="O" label="Player O name" value={names.o} onChange={setName("o")} />
+                </>
+              ) : isSinglePlayer ? (
+                <NameField mark="X" label="Your name" value={names.solo} onChange={setName("solo")} />
+              ) : (
+                <NameField label="Your name (your friend sees this)" value={names.online} onChange={setName("online")} inputRef={onlineNameRef} />
+              )}
+            </div>
+
             {isSinglePlayer && (
               <div className="menu-row">
                 <span className="menu-label">Difficulty</span>
@@ -537,7 +623,7 @@ export default function App() {
             {isOnline ? (
               /* Online: create a room, or join a friend's with their code */
               <div className="online-panel">
-                <button type="button" className="new-game-btn" onClick={online.create} disabled={!serverReady || online.phase === "connecting"}>
+                <button type="button" className="new-game-btn" onClick={() => online.create(names.online)} disabled={!serverReady || online.phase === "connecting"}>
                   {online.phase === "connecting" ? "Connecting…" : "Create a room"}
                 </button>
                 <span className="online-or">or join a friend</span>
@@ -557,6 +643,7 @@ export default function App() {
                     Join
                   </button>
                 </form>
+                {askNameToJoin && <p className="join-hint">You've been invited to room {joinCode}. Check your name above, then tap Join.</p>}
               </div>
             ) : (
               <button type="button" className="new-game-btn" onClick={startFromMenu} disabled={loading}>
@@ -589,7 +676,7 @@ export default function App() {
               <section className="players" aria-label="Scores">
                 <div className={sideClass("X")}>
                   <span className="player-mark" aria-hidden="true"><Mark player="X" /></span>
-                  <span className="player-name">{nameX}</span>
+                  <span className="player-name"><span className="player-name-text">{nameX}</span></span>
                   <span className="player-score">{scores.X}</span>
                 </div>
 
@@ -601,7 +688,7 @@ export default function App() {
                 <div className={sideClass("O")}>
                   <span className="player-score">{scores.O}</span>
                   <span className="player-name">
-                    {nameO}
+                    <span className="player-name-text">{nameO}</span>
                     {vsComputer && <small className="player-sub">{difficultyLabel}</small>}
                   </span>
                   <span className="player-mark" aria-hidden="true"><Mark player="O" /></span>

@@ -1,6 +1,8 @@
 package com.example.tictactoe.online;
 
+import java.util.EnumMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 import com.example.tictactoe.domain.Player;
@@ -17,6 +19,10 @@ public class Room {
     private String gameId;
     private Player lastStarter;
     private final Set<String> rematchVotes = new HashSet<>();
+    private final Map<Player, String> names = new EnumMap<>(Player.class);
+
+    // Names are shown to the other player, so keep them short and plain
+    static final int MAX_NAME_LENGTH = 16;
 
     Room(String code, String playerX) {
         this.code = code;
@@ -57,6 +63,31 @@ public class Room {
 
     Set<String> getRematchVotes() {
         return rematchVotes;
+    }
+
+    /** The name a player chose, or "Player X" / "Player O" if they didn't give one. */
+    public String nameOf(Player mark) {
+        String name = names.get(mark);
+        return name != null ? name : "Player " + mark.name();
+    }
+
+    void setName(Player mark, String name) {
+        String clean = cleanName(name);
+        if (clean == null) {
+            names.remove(mark);
+        } else {
+            names.put(mark, clean);
+        }
+    }
+
+    /** Trims, collapses spaces, removes control characters and limits the length; null if nothing is left. */
+    static String cleanName(String name) {
+        if (name == null) return null;
+        String clean = name.replaceAll("\\p{Cntrl}", "").replaceAll("\\s+", " ").trim();
+        if (clean.length() > MAX_NAME_LENGTH) {
+            clean = clean.substring(0, MAX_NAME_LENGTH).trim();
+        }
+        return clean.isEmpty() ? null : clean;
     }
 
     public boolean isFull() {

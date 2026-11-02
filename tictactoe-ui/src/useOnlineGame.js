@@ -11,11 +11,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
  *          "ended"      the friend left or the connection dropped
  *   code, you ("X" or "O"), game (same shape as the REST API), error, pending (a move is on its way)
  *   rematch: { mine, theirs } - who has asked for another game after one ends
+ *   names: { X, O } - both players' names, from the server when the game starts
  *
- * Actions: create(), join(code), move(cellIndex), requestRematch(), leave()
+ * Actions: create(name), join(code, name), move(cellIndex), requestRematch(), leave()
  */
 const NO_REMATCH = { mine: false, theirs: false };
-const INITIAL = { phase: "idle", code: null, you: null, game: null, error: null, pending: false, endReason: null, rematch: NO_REMATCH };
+const INITIAL = { phase: "idle", code: null, you: null, game: null, error: null, pending: false, endReason: null, rematch: NO_REMATCH, names: null };
 
 // A tiny message every 25 s so hosting proxies don't close a quiet connection (e.g. while waiting for a friend)
 const KEEP_ALIVE_MS = 25_000;
@@ -39,7 +40,7 @@ export function useOnlineGame(wsUrl) {
         break;
       case "GAME_STARTED":
         confirmedGameRef.current = message.game;
-        setState((s) => ({ ...s, phase: "playing", code: message.code, you: message.you, game: message.game, error: null, pending: false, rematch: NO_REMATCH }));
+        setState((s) => ({ ...s, phase: "playing", code: message.code, you: message.you, names: message.names ?? null, game: message.game, error: null, pending: false, rematch: NO_REMATCH }));
         break;
       case "REMATCH_REQUESTED":
         setState((s) => ({ ...s, rematch: { ...s.rematch, theirs: true } }));
@@ -100,15 +101,18 @@ export function useOnlineGame(wsUrl) {
     [wsUrl, handleMessage]
   );
 
-  const create = useCallback(() => {
-    setState({ ...INITIAL, phase: "connecting" });
-    send({ type: "CREATE" });
-  }, [send]);
+  const create = useCallback(
+    (name) => {
+      setState({ ...INITIAL, phase: "connecting" });
+      send({ type: "CREATE", name: name?.trim() || undefined });
+    },
+    [send]
+  );
 
   const join = useCallback(
-    (code) => {
+    (code, name) => {
       setState({ ...INITIAL, phase: "connecting" });
-      send({ type: "JOIN", code: code.trim().toUpperCase() });
+      send({ type: "JOIN", code: code.trim().toUpperCase(), name: name?.trim() || undefined });
     },
     [send]
   );

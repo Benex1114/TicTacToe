@@ -124,6 +124,61 @@ class OnlineGameCoordinatorTest {
         assertEquals("No room with code ZZZZ", error.get("message"));
     }
 
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> names(Map<String, Object> message) {
+        return (Map<String, Object>) message.get("names");
+    }
+
+    @Test
+    void bothPlayersSeeEachOthersNames() {
+        String code = (String) to("alice", send("alice", "type", "CREATE", "name", "Alice")).get("code");
+
+        List<OnlineGameCoordinator.Outgoing> out = send("bob", "type", "JOIN", "code", code, "name", "Bob");
+
+        for (String player : List.of("alice", "bob")) {
+            Map<String, Object> names = names(to(player, out));
+            assertEquals("Alice", names.get("X"));
+            assertEquals("Bob", names.get("O"));
+        }
+    }
+
+    @Test
+    void missingOrBlankNamesFallBackToPlayerXAndO() {
+        String code = (String) to("alice", send("alice", "type", "CREATE")).get("code");
+
+        Map<String, Object> names = names(to("bob", send("bob", "type", "JOIN", "code", code, "name", "   ")));
+
+        assertEquals("Player X", names.get("X"));
+        assertEquals("Player O", names.get("O"));
+    }
+
+    @Test
+    void namesAreTidiedUpAndKeptShort() {
+        String code = (String) to("alice", send("alice", "type", "CREATE", "name", "  Seetharaman   Kumar Iyer the Great ")).get("code");
+
+        Map<String, Object> names = names(to("bob", send("bob", "type", "JOIN", "code", code, "name", "Bo\nb")));
+
+        assertEquals("Seetharaman Kuma", names.get("X")); // 16 characters at most
+        assertEquals("Bob", names.get("O"));              // control characters removed
+    }
+
+    @Test
+    void namesStayTheSameForARematch() {
+        String code = (String) to("alice", send("alice", "type", "CREATE", "name", "Alice")).get("code");
+        send("bob", "type", "JOIN", "code", code, "name", "Bob");
+        send("alice", "type", "MOVE", "cellIndex", 0);
+        send("bob", "type", "MOVE", "cellIndex", 3);
+        send("alice", "type", "MOVE", "cellIndex", 1);
+        send("bob", "type", "MOVE", "cellIndex", 4);
+        send("alice", "type", "MOVE", "cellIndex", 2);
+        send("bob", "type", "REMATCH");
+
+        Map<String, Object> names = names(to("bob", send("alice", "type", "REMATCH")));
+
+        assertEquals("Alice", names.get("X"));
+        assertEquals("Bob", names.get("O"));
+    }
+
     @Test
     void pingKeepsTheConnectionAliveWithoutAReply() {
         startGame();
