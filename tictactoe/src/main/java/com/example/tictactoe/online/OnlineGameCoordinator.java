@@ -17,8 +17,8 @@ import com.example.tictactoe.dto.GameResponse;
  * without a browser, a WebSocket or JSON.
  *
  * Messages from a player (field "type"):
- *   CREATE                 create a room and get a code
- *   JOIN   { code }        join a friend's room
+ *   CREATE { name? }       create a room and get a code
+ *   JOIN   { code, name? } join a friend's room
  *   MOVE   { cellIndex }   play a move
  *   REMATCH                ask for another game after one ends
  *   LEAVE                  quit the room
@@ -26,7 +26,8 @@ import com.example.tictactoe.dto.GameResponse;
  *
  * Messages sent to players:
  *   ROOM_CREATED      { code, you }        to the creator, while waiting for a friend
- *   GAME_STARTED      { code, you, game }  to both, for the first game and every rematch
+ *   GAME_STARTED      { code, you, names, game }  to both, for the first game and every rematch
+ *                     (names = { X, O }, so each player sees who they're playing)
  *   GAME_UPDATE       { game }             to both, after every move
  *   REMATCH_REQUESTED { by }               to the other player when someone asks for a rematch
  *   OPPONENT_LEFT                          when the other player quits or disconnects
@@ -49,8 +50,8 @@ public class OnlineGameCoordinator {
         String type = String.valueOf(message.get("type"));
         try {
             return switch (type) {
-                case "CREATE" -> create(playerId);
-                case "JOIN" -> join(playerId, String.valueOf(message.get("code")));
+                case "CREATE" -> create(playerId, text(message.get("name")));
+                case "JOIN" -> join(playerId, String.valueOf(message.get("code")), text(message.get("name")));
                 case "MOVE" -> move(playerId, message.get("cellIndex"));
                 case "REMATCH" -> rematch(playerId);
                 case "LEAVE" -> disconnected(playerId);
@@ -70,9 +71,9 @@ public class OnlineGameCoordinator {
         return opponent == null ? List.of() : List.of(new Outgoing(opponent, message("OPPONENT_LEFT")));
     }
 
-    private List<Outgoing> create(String playerId) {
+    private List<Outgoing> create(String playerId, String name) {
         List<Outgoing> out = new ArrayList<>(disconnected(playerId)); // leaving an old room tells that opponent
-        Room room = rooms.createRoom(playerId);
+        Room room = rooms.createRoom(playerId, name);
         Map<String, Object> created = message("ROOM_CREATED");
         created.put("code", room.getCode());
         created.put("you", Player.X.name());
@@ -80,8 +81,8 @@ public class OnlineGameCoordinator {
         return out;
     }
 
-    private List<Outgoing> join(String playerId, String code) {
-        Room room = rooms.joinRoom(code, playerId);
+    private List<Outgoing> join(String playerId, String code, String name) {
+        Room room = rooms.joinRoom(code, playerId, name);
         GameResponse game = rooms.currentGame(room);
         return gameStarted(room, game);
     }
@@ -115,6 +116,10 @@ public class OnlineGameCoordinator {
             Map<String, Object> started = message("GAME_STARTED");
             started.put("code", room.getCode());
             started.put("you", room.markOf(player).name());
+            Map<String, Object> names = new LinkedHashMap<>();
+            names.put("X", room.nameOf(Player.X));
+            names.put("O", room.nameOf(Player.O));
+            started.put("names", names);
             started.put("game", gameJson(game));
             out.add(new Outgoing(player, started));
         }
@@ -130,6 +135,11 @@ public class OnlineGameCoordinator {
         json.put("status", game.getStatus().name());
         json.put("difficulty", null);
         return json;
+    }
+
+    // A name field only counts if it's actually text
+    private static String text(Object value) {
+        return value instanceof String s ? s : null;
     }
 
     private static Map<String, Object> message(String type) {
