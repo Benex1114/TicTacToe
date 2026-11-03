@@ -285,7 +285,7 @@ button:focus-visible {
 
 .title {
   margin: 0;
-  font-size: clamp(48px, 13vw, 72px);
+  font-size: clamp(40px, 12vw, 72px); /* a little smaller on narrow phones, clear of the sound button */
   font-weight: 800;
   letter-spacing: -1px;
   color: var(--title);
@@ -950,6 +950,61 @@ button:focus-visible {
 }
 
 /* ---------- Accessibility ---------- */
+/* ---------- Sound on/off button (top-right corner on every screen) ---------- */
+.sound-toggle {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.7);
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, transform 0.12s ease;
+}
+
+.sound-toggle:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.sound-toggle:active {
+  transform: scale(0.92);
+}
+
+.sound-toggle svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sound-toggle .speaker-body {
+  fill: currentColor;
+}
+
+.sound-toggle.is-off {
+  color: #64748b;
+}
+
+@media (max-width: 600px) {
+  .sound-toggle {
+    top: 10px;
+    right: 10px;
+    width: 38px;
+    height: 38px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation: none !important;

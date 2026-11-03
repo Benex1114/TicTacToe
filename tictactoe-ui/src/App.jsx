@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useOnlineGame } from "./useOnlineGame";
+import { playSound, isMuted, setMuted } from "./sounds";
 // Backend address: set VITE_API_URL when deploying, defaults to the local backend
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
 const API_BASE = `${API_URL.replace(/\/$/, "")}/api/games`;
@@ -166,12 +167,35 @@ function Segmented({ label, options, value, onChange }) {
           role="radio"
           aria-checked={value === o.value}
           className={`segment${value === o.value ? " active" : ""}`}
-          onClick={() => onChange(o.value)}
+          onClick={() => {
+            if (o.value !== value) playSound("tap");
+            onChange(o.value);
+          }}
         >
           {o.label}
         </button>
       ))}
     </div>
+  );
+}
+
+// Speaker icon for the sound on/off button (with waves when on, a cross when off)
+function SpeakerIcon({ on }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path className="speaker-body" d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />
+      {on ? (
+        <>
+          <path d="M15.5 9a4 4 0 0 1 0 6" />
+          <path d="M18 6.5a7.5 7.5 0 0 1 0 11" />
+        </>
+      ) : (
+        <>
+          <path d="M16 9.5l5 5" />
+          <path d="M21 9.5l-5 5" />
+        </>
+      )}
+    </svg>
   );
 }
 
@@ -502,6 +526,51 @@ export default function App() {
 
   const gameOver = Boolean(shownGame && shownGame.status !== "IN_PROGRESS") || online.phase === "ended";
 
+  // ---------- Sound effects ----------
+  const [soundOn, setSoundOn] = useState(() => !isMuted());
+  const toggleSound = () => {
+    setMuted(soundOn);
+    setSoundOn(!soundOn);
+    if (!soundOn) playSound("tap"); // a little tick to show sound is back on
+  };
+
+  // A stroke sound for every new mark on the board: yours straight away (with the optimistic update),
+  // the computer's or your friend's when it arrives. Compared with the last board we played sounds for,
+  // so a server confirming your move, or a move being undone, makes no extra sound.
+  const heardBoard = useRef({ id: null, board: EMPTY_BOARD });
+  useEffect(() => {
+    if (!shownGame) {
+      heardBoard.current = { id: null, board: EMPTY_BOARD };
+      return;
+    }
+    const before = heardBoard.current.id === shownGame.gameId ? heardBoard.current.board : EMPTY_BOARD;
+    const added = shownGame.board.filter((cell, i) => cell !== "_" && before[i] === "_");
+    added.forEach((mark, i) => playSound(mark.toLowerCase(), i * 0.35));
+    heardBoard.current = { id: shownGame.gameId, board: shownGame.board };
+  }, [shownGame]);
+
+  // The result, once per game, just after the last mark's sound.
+  // With your own mark (vs the computer, online) it's a win or a loss; on a shared screen any win is a win.
+  const heardResult = useRef(null);
+  useEffect(() => {
+    if (!shownGame || shownGame.status === "IN_PROGRESS" || heardResult.current === shownGame.gameId) return;
+    heardResult.current = shownGame.gameId;
+    const result = shownGame.status === "DRAW" ? "draw" : myMark && !shownGame.status.startsWith(myMark) ? "lose" : "win";
+    playSound(result, 0.3);
+  }, [shownGame, myMark]);
+
+  // Online: your friend joined, left, or asked for a rematch
+  const heardPhase = useRef(online.phase);
+  useEffect(() => {
+    const before = heardPhase.current;
+    heardPhase.current = online.phase;
+    if (online.phase === "playing" && (before === "waiting" || before === "connecting")) playSound("join");
+    if (online.phase === "ended" && before === "playing") playSound("left");
+  }, [online.phase]);
+  useEffect(() => {
+    if (online.rematch.theirs && !online.rematch.mine) playSound("nudge");
+  }, [online.rematch.theirs, online.rematch.mine]);
+
   // Which screen to show: online play drives it while active, otherwise the menu/game state
   const view = online.phase === "waiting" ? "waiting" : onlineActive ? "game" : screen;
 
@@ -549,6 +618,17 @@ export default function App() {
     <main className="page">
       <BackgroundMarks />
 
+      {/* Sound on/off, in the corner on every screen (remembered on this device) */}
+      <button
+        type="button"
+        className={`sound-toggle${soundOn ? "" : " is-off"}`}
+        onClick={toggleSound}
+        aria-label={soundOn ? "Mute sounds" : "Turn sounds on"}
+        title={soundOn ? "Mute sounds" : "Turn sounds on"}
+      >
+        <SpeakerIcon on={soundOn} />
+      </button>
+
       <div className={`app${view === "game" ? " is-game" : ""}`}>
         {/* The title folds away during a game so the board gets the space */}
         <div className={`title-wrap${view === "game" ? " is-hidden" : ""}`} aria-hidden={view === "game"}>
@@ -587,7 +667,10 @@ export default function App() {
                   role="radio"
                   aria-checked={gameMode === m.value}
                   className={`mode-card${gameMode === m.value ? " active" : ""}`}
-                  onClick={() => setGameMode(m.value)}
+                  onClick={() => {
+                    if (m.value !== gameMode) playSound("tap");
+                    setGameMode(m.value);
+                  }}
                 >
                   <span className="mode-card-title">{m.label}</span>
                   <span className="mode-card-desc">{m.description}</span>
